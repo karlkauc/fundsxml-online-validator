@@ -16,7 +16,9 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
   mirror the XSD viewer; shared links/events live in `frontend/src/lib/links.ts`.
 - `POST /api/feedback` stores to Postgres when `FEEDBACK_DB_URL`
   (+`FEEDBACK_DB_PASSWORD`) is set (table: `backend/sql/feedback.sql`);
-  otherwise it logs the feedback at WARNING level (visible in Cloud Run logs).
+  otherwise it logs the feedback at WARNING level. Prod uses DB
+  `xmlviewer_stats` on the Hetzner host; read it with
+  `python3 tools/feedback_report.py [--days N] [--full]`. See `docs/FEEDBACK.md`.
 
 ## Local dev / test
 
@@ -48,7 +50,8 @@ gcloud run deploy xml-online-viewer --source . \
   --project xml-viewer-online --region europe-west1 \
   --allow-unauthenticated --ingress all \
   --memory 1Gi --cpu 1 --concurrency 20 --max-instances 5 --timeout 120 \
-  --set-env-vars LOG_LEVEL=INFO,MAX_UPLOAD_MB=50,MAX_ZIP_ENTRIES=2000,MAX_ZIP_UNCOMPRESSED_MB=200,MAX_XML_NODES=500000,CACHE_TTL_MIN=60,CACHE_MAX_ENTRIES=64,FETCH_MAX_RESPONSE_MB=10
+  --set-env-vars 'LOG_LEVEL=INFO,MAX_UPLOAD_MB=50,MAX_ZIP_ENTRIES=2000,MAX_ZIP_UNCOMPRESSED_MB=200,MAX_XML_NODES=500000,CACHE_TTL_MIN=60,CACHE_MAX_ENTRIES=64,FETCH_MAX_RESPONSE_MB=10,FEEDBACK_DB_URL=postgresql://xmlviewer@62.238.116.11:5432/xmlviewer_stats?sslmode=require' \
+  --update-secrets FEEDBACK_DB_PASSWORD=xmlviewer-feedback-db-password:latest
 ```
 
 Domain mappings (already created; DNS lives at the registrar):
