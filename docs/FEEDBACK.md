@@ -46,11 +46,10 @@ gcloud run services update xml-online-viewer --project xml-viewer-online --regio
   --update-secrets 'FEEDBACK_DB_PASSWORD=xmlviewer-feedback-db-password:latest'
 ```
 
-`gcloud run deploy … --set-env-vars …` (as in CLAUDE.md) **replaces** the env
-vars — the `FEEDBACK_DB_URL` and the secret survive because `--set-env-vars`
-only touches plain env vars, not secrets… except `FEEDBACK_DB_URL` itself.
-Include it in `--set-env-vars` or re-run the `services update` above after a
-deploy.
+Note: `gcloud run deploy … --set-env-vars …` **replaces** all plain env
+vars, so `FEEDBACK_DB_URL` must be part of that list (the deploy command in
+CLAUDE.md includes it). Secrets set via `--update-secrets` are kept across
+deploys.
 
 ## Reading feedback
 
