@@ -3,6 +3,7 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import clsx from "clsx";
 import { useApp } from "../../stores/appStore";
 import { buildTreeRows, type TreeRow } from "./treeRows";
+import { EVENT_OPEN_SEARCH } from "../../lib/links";
 
 export function XmlTreeView() {
   const xmlDoc = useApp((s) => s.xmlDoc);
@@ -18,6 +19,17 @@ export function XmlTreeView() {
   const setSearch = useApp((s) => s.setSearch);
 
   const virtuoso = useRef<VirtuosoHandle | null>(null);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+
+  // Header "Search" button / Ctrl-K: focus the search box.
+  useEffect(() => {
+    const onOpen = () => {
+      searchInput.current?.focus();
+      searchInput.current?.select();
+    };
+    window.addEventListener(EVENT_OPEN_SEARCH, onOpen);
+    return () => window.removeEventListener(EVENT_OPEN_SEARCH, onOpen);
+  }, []);
 
   const rows = useMemo<TreeRow[]>(() => {
     if (!xmlDoc) return [];
@@ -54,8 +66,9 @@ export function XmlTreeView() {
       </div>
       <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800">
         <input
+          ref={searchInput}
           type="search"
-          placeholder="Search tag, attribute or value…"
+          placeholder="Search tag, attribute or value… (Ctrl/Cmd-K)"
           className="w-full text-sm px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
           value={searchQuery}
           onChange={(e) => setSearch(e.target.value)}

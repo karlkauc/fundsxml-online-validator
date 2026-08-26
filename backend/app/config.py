@@ -24,6 +24,8 @@ class Settings:
     max_zip_uncompressed_mb: int
     max_zip_ratio: int
     max_xml_nodes: int
+    feedback_db_url: str
+    feedback_db_password: str
 
     @property
     def max_upload_bytes(self) -> int:
@@ -75,6 +77,8 @@ def load_settings() -> Settings:
         max_zip_uncompressed_mb=int(os.getenv("MAX_ZIP_UNCOMPRESSED_MB", "200")),
         max_zip_ratio=int(os.getenv("MAX_ZIP_RATIO", "200")),
         max_xml_nodes=int(os.getenv("MAX_XML_NODES", "500000")),
+        feedback_db_url=os.getenv("FEEDBACK_DB_URL", ""),
+        feedback_db_password=os.getenv("FEEDBACK_DB_PASSWORD", ""),
     )
 
 

@@ -162,3 +162,43 @@ export async function loadXsdFromRelease(
     ),
   );
 }
+
+// --- Feedback & health ----------------------------------------------------
+
+export interface FeedbackPayload {
+  message: string;
+  email?: string;
+  page?: string;
+  xml_name?: string;
+  xsd_name?: string;
+  error_detail?: string;
+  /** Honeypot; always empty for real users. */
+  website?: string;
+}
+
+export async function sendFeedback(payload: FeedbackPayload): Promise<void> {
+  const response = await fetch(`${API_BASE}/feedback`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    let detail = `HTTP ${response.status}`;
+    try {
+      const body = await response.json();
+      if (typeof body?.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, response.status);
+  }
+}
+
+export interface HealthResponse {
+  status: string;
+  version: string;
+}
+
+export async function fetchHealth(): Promise<HealthResponse> {
+  return handle<HealthResponse>(await fetch(`${API_BASE}/health`));
+}

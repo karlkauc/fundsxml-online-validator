@@ -18,6 +18,9 @@ import { XmlTreeView } from "./components/XmlTreeView/XmlTreeView";
 import { DiagramView } from "./components/DiagramView/DiagramView";
 import { ValidationPanel } from "./components/ValidationPanel";
 import { ThemeToggle } from "./components/ThemeToggle";
+import { FeedbackDialog } from "./components/FeedbackDialog";
+import { AboutDialog } from "./components/AboutDialog";
+import { GITHUB_REPO_URL, XSD_VIEWER_URL, openAbout, openFeedback, openSearch } from "./lib/links";
 
 // Stable landing route fundsxml.org can link to: opens the XSD loader on the
 // FundsXML Releases tab and auto-loads the newest release's schema.
@@ -41,6 +44,18 @@ export default function App() {
   const viewMode = useApp((s) => s.viewMode);
   const setViewMode = useApp((s) => s.setViewMode);
   const [filesOpen, setFilesOpen] = useState(true);
+
+  // Ctrl/Cmd-K focuses the tree search, same shortcut as the XSD viewer.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        openSearch();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [handoff, setHandoff] = useState<{ status: "waiting" | "loading" | "error"; detail?: string } | null>(
     isHandoff ? { status: "waiting" } : null,
   );
@@ -102,20 +117,58 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-3 px-4 py-2 border-b border-slate-200 dark:border-slate-800">
-        <h1 className="text-base font-semibold">XML Online Viewer</h1>
-        <p className="text-xs text-slate-500 hidden sm:block">
-          View XML data · validate against XSD · export errors to Excel
-        </p>
-        <div className="ml-auto flex items-center gap-3">
-          <a
-            href="https://fundsxml.org"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-xs text-accent hover:underline"
+      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center gap-3">
+          <h1 className="text-lg font-semibold">XML Online Viewer</h1>
+          <p className="hidden md:block text-sm text-slate-500 dark:text-slate-400">
+            View XML data · validate against XSD · export errors to Excel
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              setViewMode("tree");
+              openSearch();
+            }}
+            disabled={!xmlDoc}
+            title="Search (Ctrl/Cmd-K)"
           >
-            fundsxml.org
+            🔍 Search
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => openFeedback()}
+            title="Send feedback"
+            aria-label="Send feedback"
+          >
+            💬 Feedback
+          </button>
+          <a
+            className="btn"
+            href={XSD_VIEWER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Have an XML Schema instead? Open our sister tool XSD Viewer"
+            aria-label="Open XSD Viewer (sister tool for XML Schemas)"
+          >
+            XSD Viewer ↗
           </a>
+          <a
+            className="btn"
+            href={GITHUB_REPO_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Source code on GitHub"
+            aria-label="Source code on GitHub"
+          >
+            GitHub
+          </a>
+          <button type="button" className="btn" onClick={() => openAbout()} title="About this app" aria-label="About this app">
+            ℹ️ About
+          </button>
           <ThemeToggle />
         </div>
       </header>
@@ -208,6 +261,9 @@ export default function App() {
           </div>
         )}
       </main>
+
+      <FeedbackDialog />
+      <AboutDialog />
     </div>
   );
 }

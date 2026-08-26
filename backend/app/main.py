@@ -14,11 +14,13 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app import __version__
+from app.api.feedback import router as feedback_router
 from app.api.releases import router as releases_router
 from app.api.validate import router as validate_router
 from app.api.xml import router as xml_router
 from app.api.xsd import router as xsd_router
 from app.config import settings
+from app.feedback_store import FeedbackStore
 from app.logging_setup import configure_logging, new_request_id, request_id_var
 from app.rate_limit import limiter
 
@@ -79,6 +81,7 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
+app.state.feedback = FeedbackStore(settings.feedback_db_url, settings.feedback_db_password)
 
 
 @app.exception_handler(RateLimitExceeded)
@@ -165,6 +168,7 @@ app.include_router(xml_router, prefix="/api")
 app.include_router(xsd_router, prefix="/api")
 app.include_router(validate_router, prefix="/api")
 app.include_router(releases_router, prefix="/api")
+app.include_router(feedback_router, prefix="/api")
 
 # --- Static frontend ------------------------------------------------------
 # Serves the built React SPA. In dev, the Vite dev-server runs separately and

@@ -1,14 +1,17 @@
 import { useState } from "react";
 
-function current(): "light" | "dark" {
+type Theme = "light" | "dark";
+
+/** public/theme-init.js applies the stored/system theme before first paint. */
+function current(): Theme {
   return document.documentElement.classList.contains("dark") ? "dark" : "light";
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">(current);
+  const [theme, setTheme] = useState<Theme>(current);
 
   const toggle = () => {
-    const next = theme === "dark" ? "light" : "dark";
+    const next: Theme = theme === "dark" ? "light" : "dark";
     document.documentElement.classList.toggle("dark", next === "dark");
     localStorage.setItem("fxv-theme", next);
     setTheme(next);
@@ -17,11 +20,12 @@ export function ThemeToggle() {
   return (
     <button
       type="button"
-      className="btn !px-2 !py-1"
+      className="btn"
       onClick={toggle}
-      title="Toggle theme"
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+      title={`Theme: ${theme}`}
     >
-      {theme === "dark" ? "☀" : "☾"}
+      {theme === "dark" ? "☾" : "☀"}
     </button>
   );
 }

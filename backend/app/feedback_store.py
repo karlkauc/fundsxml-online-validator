@@ -1,0 +1,84 @@
+"""Persist user feedback (POST /api/feedback).
+
+Mirrors the XSD viewer's FeedbackStore: rows go to a Postgres ``feedback``
+table (see sql/feedback.sql) when FEEDBACK_DB_URL is set. Without a DSN the
+store is *inert* and the API falls back to writing the feedback into the
+application log, so local dev, tests and an unconfigured deployment still
+accept feedback instead of failing.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import logging
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, fields
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+ConnectFn = Callable[..., Awaitable[Any]]
+
+
+async def _default_connect(dsn: str, **kwargs: Any) -> Any:
+    import psycopg  # imported lazily so an unconfigured app never loads libpq
+
+    return await psycopg.AsyncConnection.connect(dsn, **kwargs)
+
+
+@dataclass(slots=True)
+class FeedbackRow:
+    """One row of the ``feedback`` table (column order = field order)."""
+
+    message: str
+    email: str | None = None
+    page: str | None = None
+    xml_name: str | None = None
+    xsd_name: str | None = None
+    error_detail: str | None = None
+    user_agent: str | None = None
+    app_version: str | None = None
+
+    def as_row(self) -> tuple:
+        return tuple(getattr(self, f.name) for f in fields(self))
+
+
+FEEDBACK_COLUMNS: tuple[str, ...] = tuple(f.name for f in fields(FeedbackRow))
+FEEDBACK_INSERT_SQL = (
+    f"INSERT INTO feedback ({', '.join(FEEDBACK_COLUMNS)}) "
+    f"VALUES ({', '.join('%s' for _ in FEEDBACK_COLUMNS)})"
+)
+
+
+class FeedbackStore:
+    def __init__(
+        self,
+        dsn: str,
+        password: str = "",
+        *,
+        connect: ConnectFn = _default_connect,
+        connect_timeout: int = 5,
+    ) -> None:
+        self._dsn = dsn.strip()
+        # Secret-manager values often carry a trailing newline; never let that break auth.
+        self._password = password.strip("\r\n")
+        self._connect = connect
+        self._connect_timeout = connect_timeout
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._dsn)
+
+    async def save(self, row: FeedbackRow) -> None:
+        """Insert one row on a fresh connection. Raises on failure."""
+        kwargs: dict[str, Any] = {"connect_timeout": self._connect_timeout, "autocommit": False}
+        if self._password:
+            kwargs["password"] = self._password
+        conn = await self._connect(self._dsn, **kwargs)
+        try:
+            async with conn.cursor() as cur:
+                await cur.execute(FEEDBACK_INSERT_SQL, row.as_row())
+            await conn.commit()
+        finally:
+            with contextlib.suppress(Exception):
+                await conn.close()

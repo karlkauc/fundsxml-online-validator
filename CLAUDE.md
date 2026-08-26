@@ -12,6 +12,11 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
 - `frontend/src/` — SPA: `components/` (Uploader, XmlTreeView, DiagramView,
   ValidationPanel, FundsXmlReleases), `stores/appStore.ts`, `api/client.ts`.
 - `docs/DEPLOY_CLOUD_RUN.md` — hardening/deploy reference.
+- Header/dialogs (Search, Feedback, XSD Viewer link, GitHub, About, theme)
+  mirror the XSD viewer; shared links/events live in `frontend/src/lib/links.ts`.
+- `POST /api/feedback` stores to Postgres when `FEEDBACK_DB_URL`
+  (+`FEEDBACK_DB_PASSWORD`) is set (table: `backend/sql/feedback.sql`);
+  otherwise it logs the feedback at WARNING level (visible in Cloud Run logs).
 
 ## Local dev / test
 

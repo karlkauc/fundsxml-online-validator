@@ -114,3 +114,60 @@ def test_dtd_rejected(client: TestClient) -> None:
     bomb = '<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "b">]><x/>'
     r = client.post("/api/xml/text", json={"content": bomb, "filename": "x.xml"})
     assert r.status_code == 400
+
+
+# --- Feedback ---------------------------------------------------------------
+
+
+def test_feedback_without_db_is_logged_and_accepted(client: TestClient, caplog) -> None:
+    with caplog.at_level("WARNING", logger="app.api.feedback"):
+        r = client.post("/api/feedback", json={"message": "Nice tool!", "page": "/"})
+    assert r.status_code == 204, r.text
+    assert any("user feedback" in rec.getMessage() for rec in caplog.records)
+
+
+def test_feedback_honeypot_is_dropped_silently(client: TestClient, caplog) -> None:
+    with caplog.at_level("WARNING", logger="app.api.feedback"):
+        r = client.post("/api/feedback", json={"message": "spam", "website": "http://x"})
+    assert r.status_code == 204
+    assert not any("user feedback" in rec.getMessage() for rec in caplog.records)
+
+
+def test_feedback_rejects_blank_and_bad_email(client: TestClient) -> None:
+    assert client.post("/api/feedback", json={"message": "   "}).status_code == 422
+    assert client.post("/api/feedback", json={"message": "x", "email": "nope"}).status_code == 422
+
+
+def test_feedback_uses_store_when_configured(client: TestClient) -> None:
+    import asyncio
+
+    from app.feedback_store import FeedbackRow, FeedbackStore
+
+    saved: list[tuple] = []
+
+    class _Cursor:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def execute(self, sql, row):
+            saved.append(row)
+
+    class _Conn:
+        def cursor(self):
+            return _Cursor()
+
+        async def commit(self):
+            pass
+
+        async def close(self):
+            pass
+
+    async def connect(dsn, **kw):
+        return _Conn()
+
+    store = FeedbackStore("postgresql://x/y", connect=connect)
+    asyncio.run(store.save(FeedbackRow(message="hi", xml_name="a.xml")))
+    assert saved and saved[0][0] == "hi" and saved[0][3] == "a.xml"
