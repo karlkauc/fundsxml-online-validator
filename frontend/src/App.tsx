@@ -11,6 +11,7 @@ import {
   type FundsXmlRelease,
 } from "./api/client";
 import { useApp } from "./stores/appStore";
+import { isHandoffLanding, receiveHandoff } from "./lib/handoff";
 import clsx from "clsx";
 import { Uploader } from "./components/Uploader";
 import { XmlTreeView } from "./components/XmlTreeView/XmlTreeView";
@@ -21,6 +22,8 @@ import { ThemeToggle } from "./components/ThemeToggle";
 // Stable landing route fundsxml.org can link to: opens the XSD loader on the
 // FundsXML Releases tab and auto-loads the newest release's schema.
 const isFundsXmlRoute = window.location.pathname.replace(/\/+$/, "") === "/fundsxml";
+// Opened from xsd-viewer.online with an XML file to hand over (see lib/handoff).
+const isHandoff = isHandoffLanding();
 
 /** Pick a release's main schema: the FundsXML* file, else the largest asset. */
 function pickMainAsset(release: FundsXmlRelease) {
@@ -38,6 +41,9 @@ export default function App() {
   const viewMode = useApp((s) => s.viewMode);
   const setViewMode = useApp((s) => s.setViewMode);
   const [filesOpen, setFilesOpen] = useState(true);
+  const [handoff, setHandoff] = useState<{ status: "waiting" | "loading" | "error"; detail?: string } | null>(
+    isHandoff ? { status: "waiting" } : null,
+  );
 
   const onXmlFile = useCallback(async (f: File) => setXml(await uploadXmlFile(f)), [setXml]);
   const onXmlText = useCallback(async (c: string) => setXml(await uploadXmlText(c)), [setXml]);
@@ -71,6 +77,28 @@ export default function App() {
       }
     })();
   }, [xsdInfo, setXsd]);
+
+  // Landing from the XSD viewer: announce readiness, then load the posted
+  // file as if the user had uploaded it here. Falls back to manual upload if
+  // the opener never answers (popup blocker, old deploy).
+  useEffect(() => {
+    if (!isHandoff) return;
+    const cleanup = receiveHandoff((file) => {
+      setHandoff({ status: "loading", detail: file.name });
+      void uploadXmlFile(file)
+        .then((doc) => {
+          setXml(doc);
+          setHandoff(null);
+          window.history.replaceState(null, "", window.location.pathname);
+        })
+        .catch((err) => setHandoff({ status: "error", detail: err instanceof Error ? err.message : String(err) }));
+    });
+    const timer = window.setTimeout(() => setHandoff((h) => (h?.status === "waiting" ? null : h)), 10_000);
+    return () => {
+      cleanup();
+      window.clearTimeout(timer);
+    };
+  }, [setXml]);
 
   return (
     <div className="flex flex-col h-full">
@@ -110,6 +138,21 @@ export default function App() {
             </span>
           )}
         </button>
+        {handoff && (
+          <p
+            role="status"
+            className={clsx(
+              "mx-4 mt-2 rounded px-3 py-1.5 text-xs",
+              handoff.status === "error"
+                ? "bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-300"
+                : "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300",
+            )}
+          >
+            {handoff.status === "waiting" && "Receiving file from XSD Viewer…"}
+            {handoff.status === "loading" && `Loading ${handoff.detail}…`}
+            {handoff.status === "error" && `Could not load the file from XSD Viewer: ${handoff.detail}`}
+          </p>
+        )}
         {filesOpen && (
           <div className="px-4 pb-4">
             <Uploader

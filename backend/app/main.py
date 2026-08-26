@@ -118,7 +118,9 @@ async def security_headers(request: Request, call_next):
         "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
     )
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    # The SPA shell relaxes this to "unsafe-none" so the XSD viewer can open
+    # us in a new tab and hand a file over via postMessage (see spa_fallback).
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
     return response
 
 
@@ -198,6 +200,9 @@ if _static_path.is_dir() and (_static_path / "index.html").is_file():
                 "Content-Security-Policy": csp,
                 "X-Frame-Options": "DENY",
                 "X-Content-Type-Options": "nosniff",
+                # Keep window.opener alive: xsd-viewer.online opens this page
+                # with ?from=xsd-viewer and posts the XML file to it.
+                "Cross-Origin-Opener-Policy": "unsafe-none",
                 "Referrer-Policy": "no-referrer",
             },
         )
