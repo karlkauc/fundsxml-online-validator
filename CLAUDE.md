@@ -29,7 +29,7 @@ cd backend && pip install -e ".[dev]" && uvicorn app.main:app --reload --port 80
 cd frontend && npm install && npm run dev          # proxies /api -> 8080
 cd backend && pytest && ruff check .
 cd frontend && npm run build && npm run lint
-docker compose up --build                          # full image at http://127.0.0.1:8092
+docker compose up --build                          # full image at http://127.0.0.1:8093
 ```
 
 ## Deployment — Google Cloud Run

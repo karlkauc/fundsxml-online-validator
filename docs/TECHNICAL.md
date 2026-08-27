@@ -26,7 +26,7 @@ docker compose up --build
 ```
 
 The bundled `docker-compose.yml` builds `xml-online-viewer:latest` and binds it
-to `127.0.0.1:8092` — intended as a local sandbox, not for public exposure.
+to `127.0.0.1:8093` — intended as a local sandbox, not for public exposure.
 
 ### Google Cloud Run
 
