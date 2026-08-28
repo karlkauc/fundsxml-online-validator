@@ -7,18 +7,24 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
 ## Layout
 
 - `backend/app/` — FastAPI app. `parser/` (security, xml_tree, xsd_store,
-  validate), `api/` (xml, xsd, validate, releases), `report/excel.py`,
-  `cache.py`, `config.py`, `main.py`.
+  validate), `api/` (xml, xsd, validate, releases, feedback, `_common.py` with
+  `reject()`), `report/excel.py`, `usage/` (anonymous usage events + feedback
+  store, ported from the XSD viewer), `cache.py`, `config.py`, `main.py`.
 - `frontend/src/` — SPA: `components/` (Uploader, XmlTreeView, DiagramView,
   ValidationPanel, FundsXmlReleases), `stores/appStore.ts`, `api/client.ts`.
 - `docs/DEPLOY_CLOUD_RUN.md` — hardening/deploy reference.
 - Header/dialogs (Search, Feedback, XSD Viewer link, GitHub, About, theme)
   mirror the XSD viewer; shared links/events live in `frontend/src/lib/links.ts`.
-- `POST /api/feedback` stores to Postgres when `FEEDBACK_DB_URL`
-  (+`FEEDBACK_DB_PASSWORD`) is set (table: `backend/sql/feedback.sql`);
-  otherwise it logs the feedback at WARNING level. Prod uses DB
-  `xmlviewer_stats` on the Hetzner host; read it with
-  `python3 tools/feedback_report.py [--days N] [--full]`. See `docs/FEEDBACK.md`.
+- **Usage statistics** (`docs/USAGE_STATS.md`): off unless `USAGE_DB_URL` is
+  set. Routers call `emit("xml_load"|"xsd_load"|"validate"|"export", …)`,
+  `spa_fallback` emits `page_view`; rows land in `usage_event`
+  (`backend/sql/usage_stats.sql`, same columns as the XSD viewer). Rejections
+  go through `_common.reject()` so nothing is emitted twice.
+- `POST /api/feedback` stores to Postgres when `USAGE_DB_URL` (or the override
+  `FEEDBACK_DB_URL`, +`_PASSWORD`) is set (table: `backend/sql/feedback.sql`,
+  store `backend/app/usage/feedback.py`); otherwise it logs the feedback at
+  WARNING level. Prod uses DB `xmlviewer_stats` on the Hetzner host; read it
+  with `python3 tools/feedback_report.py [--days N] [--full]`. See `docs/FEEDBACK.md`.
 - Cloud Run request stats (Monitoring metric + `/api/*` log breakdown):
   `python3 tools/usage_report.py [--days N] [--no-logs]` (needs gcloud auth).
 
@@ -47,14 +53,24 @@ config may default to another project (e.g. `findatex-validator`), in which case
 omitting the flag deploys to the wrong project.
 
 ```bash
-# Build + deploy from source (hardened settings)
-gcloud run deploy xml-online-viewer --source . \
-  --project xml-viewer-online --region europe-west1 \
-  --allow-unauthenticated --ingress all \
-  --memory 1Gi --cpu 1 --concurrency 20 --max-instances 5 --timeout 120 \
-  --set-env-vars 'LOG_LEVEL=INFO,MAX_UPLOAD_MB=50,MAX_ZIP_ENTRIES=2000,MAX_ZIP_UNCOMPRESSED_MB=200,MAX_XML_NODES=500000,CACHE_TTL_MIN=60,CACHE_MAX_ENTRIES=64,FETCH_MAX_RESPONSE_MB=10,FEEDBACK_DB_URL=postgresql://xmlviewer@62.238.116.11:5432/xmlviewer_stats?sslmode=require' \
-  --update-secrets FEEDBACK_DB_PASSWORD=xmlviewer-feedback-db-password:latest
+# Build + deploy from source (hardened settings, complete env-var list)
+scripts/deploy.sh                 # downloads GeoLite2 into backend/geoip/, then gcloud run deploy
+SKIP_GEOIP=1 scripts/deploy.sh    # deploy without refreshing the GeoIP DB
 ```
+
+`scripts/deploy.sh` is the single source of truth for the `gcloud run deploy`
+flags. `--set-env-vars` **replaces** every plain env var, so any new variable
+must be added there. Current set: `LOG_LEVEL, MAX_UPLOAD_MB, MAX_ZIP_ENTRIES,
+MAX_ZIP_UNCOMPRESSED_MB, MAX_XML_NODES, CACHE_TTL_MIN, CACHE_MAX_ENTRIES,
+FETCH_MAX_RESPONSE_MB, USAGE_DB_URL` (replaces the former `FEEDBACK_DB_URL`;
+feedback falls back to the usage DSN). Secrets (`--update-secrets`):
+`USAGE_DB_PASSWORD=xmlviewer-feedback-db-password`,
+`USAGE_HASH_SECRET=xmlviewer-usage-hash-secret`,
+`MAXMIND_LICENSE_KEY=xmlviewer-maxmind-license-key`. The `.gcloudignore`
+whitelists `backend/geoip/*.mmdb` so the downloaded database reaches Cloud
+Build. Before the first deploy with usage tracking: apply
+`backend/sql/usage_stats.sql` on the VPS and create the two new secrets
+(`docs/USAGE_STATS.md`, "One-time setup").
 
 Domain mappings (already created; DNS lives at the registrar):
 

@@ -4,16 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 
 from fastapi import APIRouter, HTTPException, Request, UploadFile
 from lxml import etree
 from pydantic import BaseModel, Field
 
-from app.api._common import read_upload, reject_oversized_text
+from app.api._common import _ms, read_upload, reject, reject_oversized_text
 from app.cache import xml_cache
 from app.parser.security import SecurityError, fetch_url
 from app.parser.xml_tree import StoredXml, XmlDocModel, parse_xml
 from app.rate_limit import READ_LIMIT, WRITE_LIMIT, limiter
+from app.usage.context import emit
+from app.usage.events import schema_display_name
 
 logger = logging.getLogger(__name__)
 
@@ -41,29 +44,53 @@ def _finalize(stored: StoredXml) -> XmlDocModel:
     return stored.model
 
 
-def _parse(data: bytes, filename: str) -> XmlDocModel:
+def _parse(data: bytes, filename: str, *, source: str) -> XmlDocModel:
+    """Parse, cache and emit one ``xml_load`` usage event (ok or parse_error)."""
+    started = time.perf_counter()
+    name = schema_display_name(source, filename)
     try:
         stored = parse_xml(data, filename)
-    except etree.XMLSyntaxError as exc:
-        raise HTTPException(status_code=400, detail=f"XML is not well-formed: {exc}") from exc
-    except SecurityError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _finalize(stored)
+    except (etree.XMLSyntaxError, SecurityError) as exc:
+        detail = f"XML is not well-formed: {exc}" if isinstance(exc, etree.XMLSyntaxError) else str(exc)
+        emit(
+            "xml_load",
+            source=source,
+            schema_name=name,
+            input_bytes=len(data),
+            duration_ms=_ms(started),
+            status="parse_error",
+            status_code=400,
+            error_detail=detail,
+        )
+        raise HTTPException(status_code=400, detail=detail) from exc
+    model = _finalize(stored)
+    emit(
+        "xml_load",
+        source=source,
+        schema_name=name,
+        input_bytes=len(data),
+        file_count=1,
+        element_count=model.node_count,
+        duration_ms=_ms(started),
+        status="ok",
+        status_code=200,
+    )
+    return model
 
 
 @router.post("/xml/upload", response_model=XmlDocModel)
 @limiter.limit(WRITE_LIMIT)
 async def upload_xml(request: Request, file: UploadFile) -> XmlDocModel:
-    content = await read_upload(file)
-    return _parse(content, file.filename or "document.xml")
+    content = await read_upload(file, event_type="xml_load")
+    return _parse(content, file.filename or "document.xml", source="upload")
 
 
 @router.post("/xml/text", response_model=XmlDocModel)
 @limiter.limit(WRITE_LIMIT)
 async def upload_xml_text(request: Request, payload: TextPayload) -> XmlDocModel:
     data = payload.content.encode("utf-8")
-    reject_oversized_text(data)
-    return _parse(data, payload.filename)
+    reject_oversized_text(data, event_type="xml_load", filename=payload.filename)
+    return _parse(data, payload.filename, source="text")
 
 
 @router.post("/xml/url", response_model=XmlDocModel)
@@ -72,8 +99,10 @@ async def upload_xml_url(request: Request, payload: UrlPayload) -> XmlDocModel:
     try:
         fetched = fetch_url(payload.url)
     except SecurityError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return _parse(fetched.content, fetched.url)
+        raise reject(
+            "xml_load", "url", 400, str(exc), schema_name=schema_display_name("url", payload.url)
+        ) from exc
+    return _parse(fetched.content, fetched.url, source="url")
 
 
 @router.get("/xml/{xml_id}", response_model=XmlDocModel)

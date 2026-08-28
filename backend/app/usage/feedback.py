@@ -1,29 +1,24 @@
-"""Persist user feedback (POST /api/feedback).
+"""Persist user feedback (POST /api/feedback) in the usage-stats Postgres.
 
-Mirrors the XSD viewer's FeedbackStore: rows go to a Postgres ``feedback``
-table (see sql/feedback.sql) when FEEDBACK_DB_URL is set. Without a DSN the
-store is *inert* and the API falls back to writing the feedback into the
-application log, so local dev, tests and an unconfigured deployment still
-accept feedback instead of failing.
+Rows go to the ``feedback`` table (see sql/feedback.sql) when a DSN is
+configured. Without one the store is *inert* and the API falls back to
+writing the feedback into the application log, so local dev, tests and an
+unconfigured deployment still accept feedback instead of failing.
+
+Unlike usage events, feedback is written synchronously inside the request:
+it is rare, and the user deserves an honest "sent" / "failed".
 """
 
 from __future__ import annotations
 
 import contextlib
 import logging
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, fields
 from typing import Any
 
+from app.usage.recorder import ConnectFn, _default_connect
+
 logger = logging.getLogger(__name__)
-
-ConnectFn = Callable[..., Awaitable[Any]]
-
-
-async def _default_connect(dsn: str, **kwargs: Any) -> Any:
-    import psycopg  # imported lazily so an unconfigured app never loads libpq
-
-    return await psycopg.AsyncConnection.connect(dsn, **kwargs)
 
 
 @dataclass(slots=True)
@@ -36,7 +31,10 @@ class FeedbackRow:
     xml_name: str | None = None
     xsd_name: str | None = None
     error_detail: str | None = None
+    visitor_hash: str | None = None
+    country_code: str | None = None
     user_agent: str | None = None
+    device: str | None = None
     app_version: str | None = None
 
     def as_row(self) -> tuple:

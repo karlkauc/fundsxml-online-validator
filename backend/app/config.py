@@ -24,8 +24,18 @@ class Settings:
     max_zip_uncompressed_mb: int
     max_zip_ratio: int
     max_xml_nodes: int
+    usage_db_url: str
+    usage_db_password: str
+    usage_hash_secret: str
+    maxmind_license_key: str
+    geoip_db_path: str
+    usage_drain_seconds: float
     feedback_db_url: str
     feedback_db_password: str
+
+    @property
+    def usage_enabled(self) -> bool:
+        return bool(self.usage_db_url.strip())
 
     @property
     def max_upload_bytes(self) -> int:
@@ -61,6 +71,8 @@ def _parse_origins(raw: str) -> tuple[str, ...]:
 
 
 def load_settings() -> Settings:
+    usage_db_url = os.getenv("USAGE_DB_URL", "")
+    usage_db_password = os.getenv("USAGE_DB_PASSWORD", "")
     return Settings(
         port=int(os.getenv("PORT", "8080")),
         max_upload_mb=int(os.getenv("MAX_UPLOAD_MB", "50")),
@@ -77,8 +89,16 @@ def load_settings() -> Settings:
         max_zip_uncompressed_mb=int(os.getenv("MAX_ZIP_UNCOMPRESSED_MB", "200")),
         max_zip_ratio=int(os.getenv("MAX_ZIP_RATIO", "200")),
         max_xml_nodes=int(os.getenv("MAX_XML_NODES", "500000")),
-        feedback_db_url=os.getenv("FEEDBACK_DB_URL", ""),
-        feedback_db_password=os.getenv("FEEDBACK_DB_PASSWORD", ""),
+        usage_db_url=usage_db_url,
+        usage_db_password=usage_db_password,
+        usage_hash_secret=os.getenv("USAGE_HASH_SECRET", ""),
+        maxmind_license_key=os.getenv("MAXMIND_LICENSE_KEY", ""),
+        geoip_db_path=os.getenv("GEOIP_DB_PATH", "/tmp/geoip/GeoLite2-Country.mmdb"),
+        usage_drain_seconds=float(os.getenv("USAGE_DRAIN_SECONDS", "2")),
+        # Feedback shares the usage DB; FEEDBACK_DB_URL/_PASSWORD stay as
+        # overrides so the pre-usage-tracking deployment keeps working.
+        feedback_db_url=os.getenv("FEEDBACK_DB_URL", "") or usage_db_url,
+        feedback_db_password=os.getenv("FEEDBACK_DB_PASSWORD", "") or usage_db_password,
     )
 
 

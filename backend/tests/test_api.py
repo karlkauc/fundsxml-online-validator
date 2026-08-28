@@ -141,7 +141,7 @@ def test_feedback_rejects_blank_and_bad_email(client: TestClient) -> None:
 def test_feedback_uses_store_when_configured(client: TestClient) -> None:
     import asyncio
 
-    from app.feedback_store import FeedbackRow, FeedbackStore
+    from app.usage.feedback import FeedbackRow, FeedbackStore
 
     saved: list[tuple] = []
 

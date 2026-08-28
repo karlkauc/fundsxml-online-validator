@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from dataclasses import dataclass
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.api._common import _ms, reject
 from app.cache import validation_cache, xml_cache, xsd_cache
 from app.parser.validate import ValidationResponse, validate
 from app.parser.xsd_store import XsdError
 from app.rate_limit import READ_LIMIT, WRITE_LIMIT, limiter
 from app.report.excel import build_report
+from app.usage.context import emit
+from app.usage.events import truncate
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +41,29 @@ class StoredValidation:
 @router.post("/validate", response_model=ValidationResponse)
 @limiter.limit(WRITE_LIMIT)
 async def run_validation(request: Request, payload: ValidatePayload) -> ValidationResponse:
+    started = time.perf_counter()
     stored_xml = xml_cache.get(payload.xml_id)
     if stored_xml is None:
-        raise HTTPException(status_code=404, detail="XML not found or expired")
+        raise reject("validate", None, 404, "XML not found or expired")
     stored_xsd = xsd_cache.get(payload.xsd_id)
     if stored_xsd is None:
-        raise HTTPException(status_code=404, detail="XSD not found or expired")
+        raise reject("validate", None, 404, "XSD not found or expired")
+    input_bytes = len(stored_xml.model.reformatted_xml.encode("utf-8"))
+    schema_name = truncate(stored_xsd.main_filename)
 
     try:
         result = validate(stored_xml, stored_xsd)
     except XsdError as exc:
+        emit(
+            "validate",
+            source=None,
+            schema_name=schema_name,
+            input_bytes=input_bytes,
+            duration_ms=_ms(started),
+            status="parse_error",
+            status_code=422,
+            error_detail=str(exc),
+        )
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     validation_id = hashlib.sha256(
@@ -70,6 +87,16 @@ async def run_validation(request: Request, payload: ValidatePayload) -> Validati
             "ctx_errors": len(result.errors),
         },
     )
+    emit(
+        "validate",
+        source=None,
+        schema_name=schema_name,
+        input_bytes=input_bytes,
+        error_count=len(result.errors),
+        duration_ms=_ms(started),
+        status="ok" if result.is_valid else "invalid",
+        status_code=200,
+    )
     return result
 
 
@@ -78,7 +105,16 @@ async def run_validation(request: Request, payload: ValidatePayload) -> Validati
 async def download_excel(request: Request, validation_id: str) -> StreamingResponse:
     stored = validation_cache.get(validation_id)
     if stored is None:
+        emit("export", source="excel", status="rejected", status_code=404)
         raise HTTPException(status_code=404, detail="validation result not found or expired")
+    emit(
+        "export",
+        source="excel",
+        schema_name=truncate(stored.xsd_filename),
+        error_count=len(stored.response.errors),
+        status="ok",
+        status_code=200,
+    )
     data = build_report(
         stored.response,
         xml_filename=stored.xml_filename,

@@ -22,9 +22,10 @@ import httpx
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.api.xsd import XsdInfo, _finalize
+from app.api._common import reject
+from app.api.xsd import XsdInfo, ingest_xsd
 from app.parser.security import SecurityError, fetch_url
-from app.parser.xsd_store import XsdError, load_xsd_from_files
+from app.parser.xsd_store import load_xsd_from_files
 from app.rate_limit import READ_LIMIT, WRITE_LIMIT, limiter
 
 logger = logging.getLogger(__name__)
@@ -204,16 +205,20 @@ async def load_release_schema(request: Request, tag: str, payload: LoadReleasePa
     every XSD asset upfront and keying them by filename lets filename-based
     imports resolve.
     """
+    schema_name = f"{tag}/{payload.main_filename}"
     cached = await _get_releases()
     release = next((r for r in cached.releases if r.tag_name == tag), None)
     if release is None:
-        raise HTTPException(status_code=404, detail=f"release {tag!r} not found")
+        raise reject("xsd_load", "release", 404, f"release {tag!r} not found", schema_name=schema_name)
 
     main_asset = next((a for a in release.assets if a.filename == payload.main_filename), None)
     if main_asset is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"asset {payload.main_filename!r} not found in release {tag!r}",
+        raise reject(
+            "xsd_load",
+            "release",
+            404,
+            f"asset {payload.main_filename!r} not found in release {tag!r}",
+            schema_name=schema_name,
         )
 
     files: dict[str, bytes] = {}
@@ -221,11 +226,12 @@ async def load_release_schema(request: Request, tag: str, payload: LoadReleasePa
         try:
             fetched = await asyncio.to_thread(fetch_url, asset.download_url)
         except SecurityError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            raise reject("xsd_load", "release", 400, str(exc), schema_name=schema_name) from exc
         files[asset.filename] = fetched.content
 
-    try:
-        stored = load_xsd_from_files(files, payload.main_filename)
-    except XsdError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _finalize(stored)
+    return ingest_xsd(
+        source="release",
+        schema_name=schema_name,
+        input_bytes=sum(len(data) for data in files.values()),
+        loader=lambda: load_xsd_from_files(files, payload.main_filename),
+    )

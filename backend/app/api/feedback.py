@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from app import __version__
-from app.feedback_store import FeedbackRow, FeedbackStore
 from app.rate_limit import limiter
+from app.usage.context import current
+from app.usage.events import classify_device, truncate, visitor_hash
+from app.usage.feedback import FeedbackRow, FeedbackStore
 
 logger = logging.getLogger(__name__)
 
@@ -17,13 +20,6 @@ router = APIRouter(tags=["feedback"])
 
 FEEDBACK_LIMIT = "5/minute"
 _EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-
-
-def _truncate(value: str | None, limit: int = 255) -> str | None:
-    if value is None:
-        return None
-    value = value.strip()
-    return value[:limit] if value else None
 
 
 class FeedbackPayload(BaseModel):
@@ -46,14 +42,23 @@ async def submit_feedback(request: Request, payload: FeedbackPayload) -> Respons
     if payload.website:
         return Response(status_code=204)
 
+    # Same anonymisation as usage events: the tracker (if any) supplies the
+    # daily-salted visitor hash and GeoIP country; the raw IP is never stored.
+    ctx = current()
+    ua = ctx.user_agent if ctx else request.headers.get("user-agent")
+    ip = ctx.ip if ctx else (request.client.host if request.client else None)
+    tracker = ctx.tracker if ctx else None
     row = FeedbackRow(
         message=message,
         email=(payload.email or "").strip() or None,
-        page=_truncate(payload.page),
-        xml_name=_truncate(payload.xml_name),
-        xsd_name=_truncate(payload.xsd_name),
-        error_detail=_truncate(payload.error_detail),
-        user_agent=_truncate(request.headers.get("user-agent")),
+        page=truncate(payload.page),
+        xml_name=truncate(payload.xml_name),
+        xsd_name=truncate(payload.xsd_name),
+        error_detail=truncate(payload.error_detail),
+        visitor_hash=visitor_hash(ip, ua, date.today(), tracker.hash_secret) if tracker else None,
+        country_code=tracker.geoip.country(ip) if tracker and tracker.geoip else None,
+        user_agent=truncate(ua),
+        device=classify_device(ua),
         app_version=__version__,
     )
 

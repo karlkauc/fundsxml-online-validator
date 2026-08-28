@@ -6,8 +6,13 @@ Message + optional e-mail, the SPA path, loaded XML/XSD file names, an error
 detail (when opened from an error), user agent and app version are stored.
 **No IP address, no file contents.**
 
-- `FEEDBACK_DB_URL` set ⇒ rows go to the Postgres `feedback` table
-  (`backend/sql/feedback.sql`, store in `backend/app/feedback_store.py`).
+- `USAGE_DB_URL` (or the legacy override `FEEDBACK_DB_URL`) set ⇒ rows go to
+  the Postgres `feedback` table (`backend/sql/feedback.sql`, store in
+  `backend/app/usage/feedback.py`). Since usage tracking was added
+  (`docs/USAGE_STATS.md`) the row also carries `visitor_hash`, `country_code`
+  and `device` — the same anonymised visitor columns as `usage_event`
+  (`ALTER TABLE … ADD COLUMN IF NOT EXISTS` at the end of `feedback.sql`
+  and in `usage_stats.sql`).
 - Not set (local dev, tests) ⇒ the feedback is written to the application log
   at WARNING level (`"user feedback (no FEEDBACK_DB_URL configured)"`).
 
@@ -47,9 +52,10 @@ gcloud run services update xml-online-viewer --project xml-viewer-online --regio
 ```
 
 Note: `gcloud run deploy … --set-env-vars …` **replaces** all plain env
-vars, so `FEEDBACK_DB_URL` must be part of that list (the deploy command in
-CLAUDE.md includes it). Secrets set via `--update-secrets` are kept across
-deploys.
+vars. Deploy with `scripts/deploy.sh`, which carries the complete list; since
+the usage-tracking rollout the DSN is passed as `USAGE_DB_URL` and the password
+as `USAGE_DB_PASSWORD` (same secret `xmlviewer-feedback-db-password`) — the
+feedback store falls back to those, `FEEDBACK_DB_*` remain optional overrides.
 
 ## Reading feedback
 

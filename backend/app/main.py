@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -20,9 +22,12 @@ from app.api.validate import router as validate_router
 from app.api.xml import router as xml_router
 from app.api.xsd import router as xsd_router
 from app.config import settings
-from app.feedback_store import FeedbackStore
 from app.logging_setup import configure_logging, new_request_id, request_id_var
 from app.rate_limit import limiter
+from app.usage.context import RequestUsage, UsageTracker, bind, emit, unbind
+from app.usage.feedback import FeedbackStore
+from app.usage.geoip import GeoIp
+from app.usage.recorder import UsageRecorder
 
 configure_logging(settings.log_level)
 logger = logging.getLogger("app")
@@ -72,15 +77,38 @@ class BufferRequestBodyMiddleware:
         await self.app(scope, replay, send)
 
 
+def build_usage_tracker() -> UsageTracker:
+    """Usage statistics — inert unless USAGE_DB_URL is set (docs/USAGE_STATS.md)."""
+    recorder = UsageRecorder(settings.usage_db_url, settings.usage_db_password)
+    geoip = GeoIp(settings.geoip_db_path, settings.maxmind_license_key) if recorder.enabled else None
+    if recorder.enabled and not settings.usage_hash_secret:
+        logger.warning("USAGE_HASH_SECRET is empty; visitor hashes are only date-salted")
+    return UsageTracker(recorder, geoip, settings.usage_hash_secret)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI) -> AsyncIterator[None]:
+    tracker = build_usage_tracker()
+    application.state.usage = tracker
+    await tracker.start()
+    try:
+        yield
+    finally:
+        await tracker.stop()
+
+
 app = FastAPI(
     title="XML Online Viewer",
     version=__version__,
     docs_url="/api/docs",
     redoc_url=None,
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
+# Module level (not in lifespan): existing tests use TestClient(app) without a
+# context manager, and the feedback store has no start/stop lifecycle anyway.
 app.state.feedback = FeedbackStore(settings.feedback_db_url, settings.feedback_db_password)
 
 
@@ -131,6 +159,18 @@ async def security_headers(request: Request, call_next):
 async def request_logging(request: Request, call_next):
     rid = new_request_id()
     token = request_id_var.set(rid)
+    tracker: UsageTracker | None = getattr(request.app.state, "usage", None)
+    usage: RequestUsage | None = (
+        RequestUsage(
+            tracker=tracker,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            referrer=request.headers.get("referer"),
+        )
+        if tracker is not None
+        else None
+    )
+    usage_token = bind(usage)
     start = time.perf_counter()
     try:
         response = await call_next(request)
@@ -145,6 +185,11 @@ async def request_logging(request: Request, call_next):
         )
     finally:
         request_id_var.reset(token)
+        unbind(usage_token)
+    if usage is not None and usage.emitted:
+        # Cloud Run throttles CPU after the response; give the writer a bounded
+        # chance to finish while we still have it (see docs/USAGE_STATS.md).
+        await usage.tracker.recorder.drain(timeout=settings.usage_drain_seconds)
     duration_ms = round((time.perf_counter() - start) * 1000, 2)
     logger.info(
         "request completed",
@@ -189,6 +234,7 @@ if _static_path.is_dir() and (_static_path / "index.html").is_file():
             if _static_root in candidate.parents and candidate.is_file():
                 return FileResponse(candidate)
         index_file = _static_path / "index.html"
+        emit("page_view", path="/" + full_path, status_code=200)
         csp = (
             "default-src 'self'; "
             "script-src 'self'; "

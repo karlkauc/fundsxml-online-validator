@@ -14,3 +14,9 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_feedback_received ON feedback (received_at);
+
+-- Added with usage tracking (backend/sql/usage_stats.sql): same anonymised
+-- visitor columns as usage_event. Idempotent for databases created earlier.
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS visitor_hash text;   -- daily-salted hash, no raw IP
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS country_code char(2);
+ALTER TABLE feedback ADD COLUMN IF NOT EXISTS device text;         -- desktop | mobile | bot | unknown

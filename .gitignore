@@ -18,6 +18,9 @@ frontend/dist/
 .idea/
 .vscode/
 
+# GeoLite2 database, downloaded by scripts/deploy.sh (MaxMind EULA: not committed)
+backend/geoip/*.mmdb
+
 # Playwright MCP artifacts
 .playwright-mcp/
 
