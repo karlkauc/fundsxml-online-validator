@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
@@ -123,6 +124,12 @@ async def _rate_limit_exceeded(request: Request, exc: RateLimitExceeded) -> JSON
 
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(BufferRequestBodyMiddleware)
+# Cloud Run rejects non-streamed responses above 32 MiB ("Response size was too
+# large"); the JSON tree of a ~12 MB XML upload already exceeded that. The limit
+# applies to the bytes on the wire, so compressing the (highly repetitive) JSON
+# keeps large documents deliverable. Responses carry no per-user secrets, so
+# BREACH-style attacks on compressed bodies are not a concern here.
+app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)  # 6: ~3x faster than 9, ~5% larger
 
 # Same-origin deployment: the SPA is served from the same host as the API.
 # Set CORS_ALLOW_ORIGINS only if a foreign frontend should call the API.

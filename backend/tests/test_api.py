@@ -79,15 +79,11 @@ def test_invalid_document_maps_errors_to_nodes(client: TestClient) -> None:
 def test_excel_report_is_readable(client: TestClient) -> None:
     xsd_id = _load_xsd(client)
     xml_id = _load_xml(client, INVALID_XML, "i.xml")
-    vid = client.post(
-        "/api/validate", json={"xml_id": xml_id, "xsd_id": xsd_id}
-    ).json()["validation_id"]
+    vid = client.post("/api/validate", json={"xml_id": xml_id, "xsd_id": xsd_id}).json()["validation_id"]
 
     r = client.get(f"/api/validate/{vid}/excel")
     assert r.status_code == 200
-    assert r.headers["content-type"].startswith(
-        "application/vnd.openxmlformats-officedocument"
-    )
+    assert r.headers["content-type"].startswith("application/vnd.openxmlformats-officedocument")
     wb = load_workbook(io.BytesIO(r.content))
     ws = wb.active
     # Meta block (5 rows) + blank + header + 2 error rows.
@@ -171,3 +167,20 @@ def test_feedback_uses_store_when_configured(client: TestClient) -> None:
     store = FeedbackStore("postgresql://x/y", connect=connect)
     asyncio.run(store.save(FeedbackRow(message="hi", xml_name="a.xml")))
     assert saved and saved[0][0] == "hi" and saved[0][3] == "a.xml"
+
+
+def test_large_json_responses_are_gzipped(client) -> None:
+    # Cloud Run caps non-streamed responses at 32 MiB; the XML tree JSON for a
+    # ~12 MB upload exceeded that. GZip must kick in when the client accepts it.
+    big = "<r>" + "<e a='x'>text</e>" * 5000 + "</r>"
+    r = client.post(
+        "/api/xml/text", json={"content": big, "filename": "big.xml"}, headers={"Accept-Encoding": "gzip"}
+    )
+    assert r.status_code == 200
+    assert r.headers.get("content-encoding") == "gzip"
+    assert r.json()["root"]["tag"] == "r"
+    r = client.post(
+        "/api/xml/text", json={"content": big, "filename": "big.xml"}, headers={"Accept-Encoding": "identity"}
+    )
+    assert r.status_code == 200
+    assert "content-encoding" not in r.headers
