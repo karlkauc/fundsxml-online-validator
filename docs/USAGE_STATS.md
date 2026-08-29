@@ -25,7 +25,7 @@ One row per event in table `usage_event` (DDL: `backend/sql/usage_stats.sql`):
 | `country_code` | ISO-3166-1 alpha-2 derived server-side via MaxMind GeoLite2; NULL if unknown |
 | `user_agent`, `device` | UA string (≤255) and a cheap classification `desktop`/`mobile`/`bot`/`unknown` |
 | `referrer` | `scheme://host/path` of the `Referer` header, query dropped |
-| `path` | page_view only — SPA path served |
+| `path` | page_view only — SPA path served. Only routes in `SPA_ROUTES` (`backend/app/main.py`: `/`, `/index.html`, `/fundsxml`) emit a page_view; any other unknown path is answered with 404 and **not** recorded, so scanner probes (`/wp-admin/install.php`, `/.env`, …) never reach the table. |
 | `source` | `xml_load`/`xsd_load`: `upload`/`text`/`url`/`release`; `export`: `excel`; `validate`: NULL (both inputs come from the cache) |
 | `schema_name` | `xml_load`: XML file name (upload/text: **basename**; url: URL without query); `xsd_load`: XSD main file (release: `tag/file`); `validate`/`export`: XSD main file |
 | `input_bytes` | size of the parsed input (release: sum of all fetched XSD assets; validate: the cached XML) |

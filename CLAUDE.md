@@ -17,7 +17,9 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
   mirror the XSD viewer; shared links/events live in `frontend/src/lib/links.ts`.
 - **Usage statistics** (`docs/USAGE_STATS.md`): off unless `USAGE_DB_URL` is
   set. Routers call `emit("xml_load"|"xsd_load"|"validate"|"export", …)`,
-  `spa_fallback` emits `page_view`; rows land in `usage_event`
+  `spa_fallback` (`mount_spa()`) emits `page_view` only for routes in `SPA_ROUTES`
+  (`/`, `/fundsxml`) — every other unknown path is a 404 without event, so add new
+  client-side routes there; rows land in `usage_event`
   (`backend/sql/usage_stats.sql`, same columns as the XSD viewer). Rejections
   go through `_common.reject()` so nothing is emitted twice.
 - `POST /api/feedback` stores to Postgres when `USAGE_DB_URL` (or the override
