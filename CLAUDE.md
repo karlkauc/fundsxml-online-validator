@@ -27,7 +27,8 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
   store `backend/app/usage/feedback.py`); otherwise it logs the feedback at
   WARNING level. Prod uses DB `xmlviewer_stats` on the Hetzner host; read it
   with `python3 tools/feedback_report.py [--days N] [--full]`. See `docs/FEEDBACK.md`.
-- Cloud Run request stats (Monitoring metric + `/api/*` log breakdown):
+- Cloud Run request stats (Monitoring metric + request-log classification
+  page/static/api/scanner with scanner share per day, top scanner paths/IPs, crawlers):
   `python3 tools/usage_report.py [--days N] [--no-logs]` (needs gcloud auth).
 
 ## Local dev / test
