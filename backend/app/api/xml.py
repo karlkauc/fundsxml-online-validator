@@ -44,12 +44,16 @@ def _finalize(stored: StoredXml) -> XmlDocModel:
     return stored.model
 
 
-def _parse(data: bytes, filename: str, *, source: str) -> XmlDocModel:
-    """Parse, cache and emit one ``xml_load`` usage event (ok or parse_error)."""
+def _parse(data: bytes, filename: str, *, source: str, base_url: str | None = None) -> XmlDocModel:
+    """Parse, cache and emit one ``xml_load`` usage event (ok or parse_error).
+
+    ``base_url`` is passed on for resolving relative ``xsi:schemaLocation``
+    values; it is only known for URL loads.
+    """
     started = time.perf_counter()
     name = schema_display_name(source, filename)
     try:
-        stored = parse_xml(data, filename)
+        stored = parse_xml(data, filename, base_url=base_url)
     except (etree.XMLSyntaxError, SecurityError) as exc:
         detail = f"XML is not well-formed: {exc}" if isinstance(exc, etree.XMLSyntaxError) else str(exc)
         emit(
@@ -102,7 +106,7 @@ async def upload_xml_url(request: Request, payload: UrlPayload) -> XmlDocModel:
         raise reject(
             "xml_load", "url", 400, str(exc), schema_name=schema_display_name("url", payload.url)
         ) from exc
-    return _parse(fetched.content, fetched.url, source="url")
+    return _parse(fetched.content, fetched.url, source="url", base_url=fetched.url)
 
 
 @router.get("/xml/{xml_id}", response_model=XmlDocModel)

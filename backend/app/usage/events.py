@@ -108,11 +108,11 @@ def clean_referrer(header: str | None) -> str | None:
 def schema_display_name(source: str, name: str | None) -> str | None:
     """What is stored as ``schema_name`` — never file content.
 
-    upload/text: basename only; url: URL without query/fragment; release: as is.
+    upload/text: basename only; url/auto: URL without query/fragment; release: as is.
     """
     if not name:
         return None
-    if source == "url":
+    if source in ("url", "auto"):
         try:
             parts = urlsplit(name)
         except ValueError:

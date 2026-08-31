@@ -72,9 +72,14 @@ BUNDLED_SCHEMAS: dict[str, bytes] = (
 )
 
 
-def _iter_schema_locations(data: bytes) -> list[str]:
+def _iter_schema_locations(data: bytes, *, include_remote: bool = False) -> list[str]:
     """Return all ``schemaLocation`` values of include/import/redefine/override
-    in a single schema document (empty on parse failure)."""
+    in a single schema document (empty on parse failure).
+
+    Absolute-URL locations are skipped by default: the local materialiser
+    cannot resolve them (``no_network=True``). ``include_remote=True`` is used
+    by the auto-schema fetcher, which resolves them over the network itself.
+    """
     try:
         root = etree.fromstring(data, make_parser())
     except etree.XMLSyntaxError:
@@ -84,7 +89,7 @@ def _iter_schema_locations(data: bytes) -> list[str]:
         if not isinstance(el.tag, str) or etree.QName(el).localname not in _REF_TAGS:
             continue
         loc = el.get("schemaLocation")
-        if loc and "://" not in loc:
+        if loc and (include_remote or "://" not in loc):
             locs.append(loc)
     return locs
 

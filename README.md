@@ -5,8 +5,13 @@ right in your browser. No install, no account, nothing stored.**
 
 Open <https://www.xml-viewer.online> and drop in an `.xml` file. You get a
 collapsible tree and an interactive diagram of your data side by side with a
-validation panel. Add an `.xsd` schema and the document is checked instantly —
-every error is pinned to the exact node that caused it.
+validation panel. If the document names its schema, that schema is fetched and
+applied automatically; otherwise add an `.xsd` yourself. Either way the document
+is checked instantly — every error is pinned to the exact node that caused it.
+
+> Looking to **visualise a schema** rather than a document? That is the sister
+> tool, the [XSD Online Viewer](https://www.xsd-viewer.online). Here an `.xsd`
+> is only ever used to validate a loaded XML document.
 
 ![Load XML, explore the tree and diagram, validate against an XSD, export errors to Excel](docs/media/overview.gif)
 
@@ -15,6 +20,11 @@ every error is pinned to the exact node that caused it.
 - **See your data two ways.** A collapsible **tree** of elements, attributes,
   values and comments, and a graphical **diagram** (horizontal node graph with
   expand/collapse, pan & zoom and a minimap). Switch between them at any time.
+- **The schema finds itself.** When the document carries an
+  `xsi:schemaLocation` / `xsi:noNamespaceSchemaLocation`, that schema (plus
+  everything it imports) is downloaded and applied for you, and validation runs
+  right away. You can replace or remove it at any time — a schema you pick by
+  hand is never overwritten.
 - **Validate against any XSD.** Drop a schema and the document is checked
   automatically — no button to hunt for. A green *Valid* badge or a count of
   the errors appears immediately.

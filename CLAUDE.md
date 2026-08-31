@@ -7,14 +7,33 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
 ## Layout
 
 - `backend/app/` — FastAPI app. `parser/` (security, xml_tree, xsd_store,
-  validate), `api/` (xml, xsd, validate, releases, feedback, `_common.py` with
-  `reject()`), `report/excel.py`, `usage/` (anonymous usage events + feedback
-  store, ported from the XSD viewer), `cache.py`, `config.py`, `main.py`.
+  schema_fetch, validate), `api/` (xml, xsd, validate, releases, feedback,
+  `_common.py` with `reject()`), `report/excel.py`, `usage/` (anonymous usage
+  events + feedback store, ported from the XSD viewer), `cache.py`, `config.py`,
+  `main.py`.
 - `frontend/src/` — SPA: `components/` (Uploader, XmlTreeView, DiagramView,
   ValidationPanel, FundsXmlReleases), `stores/appStore.ts`, `api/client.ts`.
 - `docs/DEPLOY_CLOUD_RUN.md` — hardening/deploy reference.
 - Header/dialogs (Search, Feedback, XSD Viewer link, GitHub, About, theme)
   mirror the XSD viewer; shared links/events live in `frontend/src/lib/links.ts`.
+- **XML-first workflow.** The XSD panel is disabled until an XML document is
+  loaded (`Uploader`'s `disabled`/`disabledHint`; exempt on `/fundsxml`, which
+  loads a release schema before any document exists), the XML panel rejects
+  `.xsd` input with a pointer to the XSD viewer, and the empty state explains
+  what the app is for. Keep the XSD framed as *validation only* — the schema
+  visualiser is the sibling site.
+- **Auto-schema.** `parse_xml` reads `xsi:schemaLocation` /
+  `xsi:noNamespaceSchemaLocation` off the root into `XmlDocModel.schema_hints`
+  (relative locations resolve against `source_url`, set only for URL loads).
+  `POST /api/xsd/auto` (`{xml_id}`) then runs `parser/schema_fetch.fetch_schema_set`,
+  which walks the schema's own `schemaLocation` references over the network,
+  rewrites them to local paths (`build_xmlschema` compiles with `no_network=True`,
+  so an absolute URL would silently not resolve) and hands the set to the shared
+  `ingest_xsd(source="auto", …)`. Only the entry point must be reachable —
+  a dependency that 404s is skipped so `BUNDLED_SCHEMAS` can cover it (the live
+  FundsXML case). The frontend funnels every XML entry point through `applyXml`
+  in `App.tsx`; `appStore.xsdSource` (`"auto" | "manual"`) makes sure a schema
+  the user picked is never overwritten.
 - **Usage statistics** (`docs/USAGE_STATS.md`): off unless `USAGE_DB_URL` is
   set. Routers call `emit("xml_load"|"xsd_load"|"validate"|"export", …)`,
   `spa_fallback` (`mount_spa()`) emits `page_view` only for routes in `SPA_ROUTES`

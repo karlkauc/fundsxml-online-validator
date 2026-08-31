@@ -12,12 +12,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from io import BytesIO
+from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
 from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.parser.security import SecurityError, _reject_known_bombs, make_parser
+
+XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 
 # ---------------------------------------------------------------------------
 # Models (mirrored in frontend/src/types/model.ts)
@@ -42,6 +45,21 @@ class XmlNode(BaseModel):
     children: list[XmlNode] = Field(default_factory=list)
 
 
+class SchemaHint(BaseModel):
+    """A schema the document itself points at, via one of the ``xsi:`` attributes.
+
+    ``resolved_url`` is set only when the location is fetchable: an absolute
+    http(s) URL, or a relative one that could be joined onto the URL the
+    document was loaded from. It stays ``None`` for uploaded/pasted documents
+    with a relative location — those schemas live on the user's disk and can
+    only be loaded manually.
+    """
+
+    namespace: str | None = None  # None for noNamespaceSchemaLocation
+    location: str
+    resolved_url: str | None = None
+
+
 class XmlDocModel(BaseModel):
     xml_id: str = ""
     filename: str
@@ -49,6 +67,10 @@ class XmlDocModel(BaseModel):
     reformatted_xml: str
     namespaces: dict[str, str] = Field(default_factory=dict)
     node_count: int = 0
+    # URL the document was fetched from, when loaded by URL; base for relative
+    # schema locations.
+    source_url: str | None = None
+    schema_hints: list[SchemaHint] = Field(default_factory=list)
 
 
 @dataclass
@@ -161,8 +183,59 @@ def _build_node(
     return node
 
 
-def parse_xml(data: bytes, filename: str) -> StoredXml:
+def _resolve_location(location: str, base_url: str | None) -> str | None:
+    """Return a fetchable http(s) URL for ``location``, or None.
+
+    Absolute http(s) locations are returned as-is. A relative location is
+    joined onto ``base_url`` when the document itself came from a URL. Any
+    other scheme (``file:``, ``urn:``, …) is deliberately not fetchable.
+    """
+    scheme = urlsplit(location).scheme.lower()
+    if scheme in ("http", "https"):
+        return location
+    if scheme:
+        return None
+    if not base_url:
+        return None
+    joined = urljoin(base_url, location)
+    return joined if urlsplit(joined).scheme.lower() in ("http", "https") else None
+
+
+def _schema_hints(root_el: etree._Element, base_url: str | None) -> list[SchemaHint]:
+    """Collect the schemas the document points at via ``xsi:schemaLocation`` /
+    ``xsi:noNamespaceSchemaLocation``.
+
+    ``schemaLocation`` holds whitespace-separated *namespace location* pairs;
+    an odd trailing token is ignored. The pair matching the root element's own
+    namespace is listed first, since that is the schema the document is
+    primarily an instance of.
+    """
+    hints: list[SchemaHint] = []
+
+    paired = root_el.get(f"{{{XSI_NS}}}schemaLocation")
+    if paired:
+        tokens = paired.split()
+        pairs = list(zip(tokens[::2], tokens[1::2], strict=False))
+        root_ns = etree.QName(root_el).namespace if isinstance(root_el.tag, str) else None
+        pairs.sort(key=lambda pair: pair[0] != root_ns)
+        hints += [
+            SchemaHint(namespace=ns, location=loc, resolved_url=_resolve_location(loc, base_url))
+            for ns, loc in pairs
+        ]
+
+    bare = (root_el.get(f"{{{XSI_NS}}}noNamespaceSchemaLocation") or "").strip()
+    if bare:
+        hints.append(
+            SchemaHint(namespace=None, location=bare, resolved_url=_resolve_location(bare, base_url))
+        )
+    return hints
+
+
+def parse_xml(data: bytes, filename: str, *, base_url: str | None = None) -> StoredXml:
     """Parse XML ``data`` into a :class:`StoredXml`.
+
+    ``base_url`` is the URL the document was fetched from, if any; relative
+    schema locations are resolved against it.
 
     Raises ``etree.XMLSyntaxError`` if the document is not well-formed and
     :class:`SecurityError` for banned DTD constructs.
@@ -185,5 +258,7 @@ def parse_xml(data: bytes, filename: str) -> StoredXml:
         reformatted_xml=pretty.decode("utf-8"),
         namespaces=namespaces,
         node_count=counter[0],
+        source_url=base_url,
+        schema_hints=_schema_hints(root_el, base_url),
     )
     return StoredXml(model=model, line_to_id=line_to_id)

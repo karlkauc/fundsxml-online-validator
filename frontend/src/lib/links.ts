@@ -2,6 +2,11 @@
 export const GITHUB_REPO_URL = "https://github.com/karlkauc/xml-online-viewer";
 export const XSD_VIEWER_URL = "https://www.xsd-viewer.online/";
 export const FUNDSXML_URL = "https://fundsxml.org";
+/** Example instance document offered in the "XML data" panel. It carries an
+ * xsi:noNamespaceSchemaLocation, so loading it also exercises auto-detection
+ * of the schema and validation in one click. */
+export const FUNDSXML_SAMPLE_URL =
+  "https://raw.githubusercontent.com/fundsxml/examples/main/FundsXML_Files/4.2.9/positions/Mixed-Fund_Positions.xml";
 
 /** Window events used to open the global dialogs / focus search from anywhere. */
 export const EVENT_OPEN_FEEDBACK = "xmlv:open-feedback";

@@ -66,6 +66,7 @@ infrastructure-level backstops (Cloud Armor, VPC egress).
 | POST | `/api/xml/{upload,text,url}` | Load XML data → tree model |
 | GET | `/api/xml/{xml_id}` | Cached XML model |
 | POST | `/api/xsd/{upload,text,url}` | Load XSD schema (file / ZIP) |
+| POST | `/api/xsd/auto` | `{xml_id}` → load the schema the document names via `xsi:schemaLocation` |
 | GET | `/api/fundsxml/releases` | List FundsXML GitHub releases |
 | POST | `/api/fundsxml/releases/{tag}/load` | Load a schema from a release |
 | POST | `/api/validate` | `{xml_id, xsd_id}` → validation result |

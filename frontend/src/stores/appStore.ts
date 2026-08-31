@@ -67,9 +67,14 @@ function computeDescendantErrorCounts(
   return counts;
 }
 
+/** Where the currently loaded schema came from. A "manual" pick is never
+ * replaced by auto-detection — the user's choice wins. */
+export type XsdSource = "auto" | "manual";
+
 interface AppState {
   xmlDoc: XmlDocModel | null;
   xsdInfo: XsdInfo | null;
+  xsdSource: XsdSource | null;
   validation: ValidationResponse | null;
   errorsByNodeId: Map<string, ValidationErrorItem[]>;
   descendantErrorCounts: Map<string, number>;
@@ -81,7 +86,8 @@ interface AppState {
   minimapVisible: boolean;
 
   setXml: (doc: XmlDocModel) => void;
-  setXsd: (info: XsdInfo) => void;
+  setXsd: (info: XsdInfo, origin?: XsdSource) => void;
+  clearXsd: () => void;
   setValidation: (result: ValidationResponse) => void;
   clearValidation: () => void;
   toggleExpanded: (id: string) => void;
@@ -96,6 +102,7 @@ interface AppState {
 export const useApp = create<AppState>((set, get) => ({
   xmlDoc: null,
   xsdInfo: null,
+  xsdSource: null,
   validation: null,
   errorsByNodeId: new Map(),
   descendantErrorCounts: new Map(),
@@ -109,6 +116,9 @@ export const useApp = create<AppState>((set, get) => ({
   setXml: (doc) =>
     set({
       xmlDoc: doc,
+      // A new document invalidates an auto-detected schema (it was derived
+      // from the previous one); a manual pick is kept.
+      ...(get().xsdSource === "auto" ? { xsdInfo: null, xsdSource: null } : {}),
       // Expand only the root, so the first level (root + direct children) is
       // visible and everything below stays collapsed.
       expandedIds: new Set([doc.root.id]),
@@ -118,9 +128,19 @@ export const useApp = create<AppState>((set, get) => ({
       descendantErrorCounts: new Map(),
     }),
 
-  setXsd: (info) =>
+  setXsd: (info, origin = "manual") =>
     set({
       xsdInfo: info,
+      xsdSource: origin,
+      validation: null,
+      errorsByNodeId: new Map(),
+      descendantErrorCounts: new Map(),
+    }),
+
+  clearXsd: () =>
+    set({
+      xsdInfo: null,
+      xsdSource: null,
       validation: null,
       errorsByNodeId: new Map(),
       descendantErrorCounts: new Map(),

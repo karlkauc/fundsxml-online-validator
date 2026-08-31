@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ApiError,
+  autoLoadXsd,
   uploadXmlFile,
   uploadXmlText,
   uploadXmlUrl,
@@ -10,6 +12,7 @@ import {
   listFundsXmlReleases,
   type FundsXmlRelease,
 } from "./api/client";
+import type { XmlDocModel } from "./types/model";
 import { useApp } from "./stores/appStore";
 import { isHandoffLanding, receiveHandoff } from "./lib/handoff";
 import clsx from "clsx";
@@ -20,13 +23,27 @@ import { ValidationPanel } from "./components/ValidationPanel";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { FeedbackDialog } from "./components/FeedbackDialog";
 import { AboutDialog } from "./components/AboutDialog";
-import { GITHUB_REPO_URL, XSD_VIEWER_URL, openAbout, openFeedback, openSearch } from "./lib/links";
+import {
+  FUNDSXML_SAMPLE_URL,
+  GITHUB_REPO_URL,
+  XSD_VIEWER_URL,
+  openAbout,
+  openFeedback,
+  openSearch,
+} from "./lib/links";
 
 // Stable landing route fundsxml.org can link to: opens the XSD loader on the
 // FundsXML Releases tab and auto-loads the newest release's schema.
 const isFundsXmlRoute = window.location.pathname.replace(/\/+$/, "") === "/fundsxml";
 // Opened from xsd-viewer.online with an XML file to hand over (see lib/handoff).
 const isHandoff = isHandoffLanding();
+
+/** Why auto-detection did not end with a loaded schema: either the document
+ * points at a schema on the user's own disk ("local"), or the download failed. */
+interface AutoSchemaNote {
+  kind: "local" | "error";
+  detail: string;
+}
 
 /** Pick a release's main schema: the FundsXML* file, else the largest asset. */
 function pickMainAsset(release: FundsXmlRelease) {
@@ -39,11 +56,16 @@ function pickMainAsset(release: FundsXmlRelease) {
 export default function App() {
   const xmlDoc = useApp((s) => s.xmlDoc);
   const xsdInfo = useApp((s) => s.xsdInfo);
+  const xsdSource = useApp((s) => s.xsdSource);
   const setXml = useApp((s) => s.setXml);
   const setXsd = useApp((s) => s.setXsd);
+  const clearXsd = useApp((s) => s.clearXsd);
   const viewMode = useApp((s) => s.viewMode);
   const setViewMode = useApp((s) => s.setViewMode);
   const [filesOpen, setFilesOpen] = useState(true);
+  // Outcome of auto-detecting the schema from the document, when it did not
+  // simply succeed. Never blocks: the document is shown either way.
+  const [autoSchema, setAutoSchema] = useState<AutoSchemaNote | null>(null);
 
   // Ctrl/Cmd-K focuses the tree search, same shortcut as the XSD viewer.
   useEffect(() => {
@@ -60,9 +82,42 @@ export default function App() {
     isHandoff ? { status: "waiting" } : null,
   );
 
-  const onXmlFile = useCallback(async (f: File) => setXml(await uploadXmlFile(f)), [setXml]);
-  const onXmlText = useCallback(async (c: string) => setXml(await uploadXmlText(c)), [setXml]);
-  const onXmlUrl = useCallback(async (u: string) => setXml(await uploadXmlUrl(u)), [setXml]);
+  // Every XML entry point (file, paste, URL, example, xsd-viewer handoff) goes
+  // through here, so auto-detection of the schema behaves identically for all
+  // of them and the validation panel picks it up on its own.
+  const applyXml = useCallback(
+    async (doc: XmlDocModel) => {
+      setXml(doc);
+      setAutoSchema(null);
+      // setXml already dropped a previously auto-detected schema; a schema the
+      // user picked by hand is kept and must not be overridden.
+      if (useApp.getState().xsdInfo) return;
+
+      const usable = doc.schema_hints.find((h) => h.resolved_url);
+      if (!usable) {
+        const local = doc.schema_hints[0];
+        if (local) setAutoSchema({ kind: "local", detail: local.location });
+        return;
+      }
+      try {
+        setXsd(await autoLoadXsd(doc.xml_id), "auto");
+      } catch (err) {
+        setAutoSchema({
+          kind: "error",
+          detail: err instanceof ApiError ? err.message : String(err),
+        });
+      }
+    },
+    [setXml, setXsd],
+  );
+
+  const onXmlFile = useCallback(async (f: File) => applyXml(await uploadXmlFile(f)), [applyXml]);
+  const onXmlText = useCallback(async (c: string) => applyXml(await uploadXmlText(c)), [applyXml]);
+  const onXmlUrl = useCallback(async (u: string) => applyXml(await uploadXmlUrl(u)), [applyXml]);
+  const onXmlSample = useCallback(
+    async () => applyXml(await uploadXmlUrl(FUNDSXML_SAMPLE_URL)),
+    [applyXml],
+  );
   const onXsdFile = useCallback(
     async (f: File, mainFilename?: string) => setXsd(await uploadXsdFile(f, mainFilename)),
     [setXsd],
@@ -73,6 +128,10 @@ export default function App() {
     async (tag: string, filename: string) => setXsd(await loadXsdFromRelease(tag, filename)),
     [setXsd],
   );
+  const onXsdClear = useCallback(() => {
+    clearXsd();
+    setAutoSchema(null);
+  }, [clearXsd]);
 
   // On /fundsxml, auto-load the newest (stable) release's schema once. On
   // failure the Releases tab is already open, so the user can pick manually.
@@ -101,8 +160,8 @@ export default function App() {
     const cleanup = receiveHandoff((file) => {
       setHandoff({ status: "loading", detail: file.name });
       void uploadXmlFile(file)
-        .then((doc) => {
-          setXml(doc);
+        .then(async (doc) => {
+          await applyXml(doc);
           setHandoff(null);
           window.history.replaceState(null, "", window.location.pathname);
         })
@@ -113,15 +172,15 @@ export default function App() {
       cleanup();
       window.clearTimeout(timer);
     };
-  }, [setXml]);
+  }, [applyXml]);
 
   return (
     <div className="flex flex-col h-full">
       <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold">XML Online Viewer</h1>
-          <p className="hidden md:block text-sm text-slate-500 dark:text-slate-400">
-            View XML data · validate against XSD · export errors to Excel
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            View any XML file as a tree or diagram · validate it against an XSD
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -214,20 +273,80 @@ export default function App() {
               onXmlFile={onXmlFile}
               onXmlText={onXmlText}
               onXmlUrl={onXmlUrl}
+              onXmlSample={onXmlSample}
               onXsdFile={onXsdFile}
               onXsdText={onXsdText}
               onXsdUrl={onXsdUrl}
               onXsdRelease={onXsdRelease}
+              onXsdClear={onXsdClear}
               defaultXsdMode={isFundsXmlRoute ? "releases" : "file"}
+              // The /fundsxml landing route loads a release schema before any
+              // document exists, so it keeps the loader enabled.
+              xsdDisabled={!xmlDoc && !isFundsXmlRoute}
+              xsdStatusNote={
+                xsdSource === "auto" ? (
+                  <span className="chip bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                    auto-detected
+                  </span>
+                ) : null
+              }
             />
+            {autoSchema && (
+              <p className="mt-2 text-xs text-amber-700 dark:text-amber-400" role="status">
+                {autoSchema.kind === "local"
+                  ? `This document references ${autoSchema.detail}. Load that schema on the right to validate it.`
+                  : `The schema referenced by this document could not be loaded (${autoSchema.detail}). Load it manually on the right.`}
+              </p>
+            )}
           </div>
         )}
       </div>
 
       <main className="flex-1 min-h-0">
         {!xmlDoc ? (
-          <div className="h-full flex items-center justify-center text-slate-400 text-sm">
-            Load XML data to see the view.
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="max-w-lg text-center">
+              <h2 className="text-xl font-semibold mb-2">Start with an XML file</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+                Drop it into <strong>XML data</strong> above — nothing is stored, and no account
+                is needed.
+              </p>
+              <ul className="text-sm text-slate-600 dark:text-slate-400 space-y-1.5 mb-5 text-left inline-block">
+                {[
+                  ["🌳", "Browse the document as a collapsible tree or as a diagram"],
+                  ["🔍", "Search across elements, attributes and values (Ctrl/Cmd-K)"],
+                  [
+                    "✅",
+                    "Validate against an XSD — auto-detected from the document when it names one — and export the errors to Excel",
+                  ],
+                ].map(([icon, text]) => (
+                  <li key={text} className="flex gap-2">
+                    <span aria-hidden="true">{icon}</span>
+                    <span>{text}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-sm">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void onXmlSample()}
+                >
+                  Load a FundsXML example
+                </button>
+              </p>
+              <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">
+                Have an XML Schema (.xsd) instead?{" "}
+                <a
+                  className="underline underline-offset-2"
+                  href={XSD_VIEWER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Visualise it in the XSD Viewer ↗
+                </a>
+              </p>
+            </div>
           </div>
         ) : (
           <div className="h-full grid grid-cols-1 lg:grid-cols-[1fr_28rem] divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800">

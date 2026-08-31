@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS usage_event (
   app_version      text,
   path             text,                 -- page_view: SPA path served
   referrer         text,                 -- scheme://host/path, no query
-  source           text,                 -- xml_load/xsd_load: upload|text|url|release ; export: excel ; validate: NULL
+  source           text,                 -- xml_load: upload|text|url ; xsd_load: upload|text|url|release|auto ; export: excel ; validate: NULL
   schema_name      text,                 -- xml_load: XML file name ; xsd_load/validate/export: XSD main file (never content)
   target_namespace text,                 -- unused (NULL) in this app
   input_bytes      int,

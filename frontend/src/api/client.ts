@@ -98,6 +98,19 @@ export async function uploadXsdUrl(url: string): Promise<XsdInfo> {
   );
 }
 
+/** Load the schema the XML document itself points at (xsi:schemaLocation /
+ * xsi:noNamespaceSchemaLocation), including everything it imports. 404 when
+ * the document names no downloadable schema. */
+export async function autoLoadXsd(xmlId: string): Promise<XsdInfo> {
+  return handle<XsdInfo>(
+    await fetch(`${API_BASE}/xsd/auto`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ xml_id: xmlId }),
+    }),
+  );
+}
+
 // --- Validation -----------------------------------------------------------
 
 export async function runValidation(

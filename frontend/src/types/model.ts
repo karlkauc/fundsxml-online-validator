@@ -19,6 +19,16 @@ export interface XmlNode {
   children: XmlNode[];
 }
 
+/** A schema the document points at via xsi:schemaLocation /
+ * xsi:noNamespaceSchemaLocation. `resolved_url` is set only when it is
+ * fetchable; a relative location in an uploaded file refers to the user's own
+ * disk and must be loaded manually. */
+export interface SchemaHint {
+  namespace: string | null;
+  location: string;
+  resolved_url: string | null;
+}
+
 export interface XmlDocModel {
   xml_id: string;
   filename: string;
@@ -26,6 +36,8 @@ export interface XmlDocModel {
   reformatted_xml: string;
   namespaces: Record<string, string>;
   node_count: number;
+  source_url: string | null;
+  schema_hints: SchemaHint[];
 }
 
 export interface XsdInfo {

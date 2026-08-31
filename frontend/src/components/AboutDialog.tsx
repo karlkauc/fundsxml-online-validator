@@ -72,6 +72,13 @@ export function AboutDialog() {
           export the errors to Excel. No install, no account.
         </p>
 
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+          The schema is optional and only used to validate a document — when the XML names one via{" "}
+          <code className="font-mono text-xs">xsi:schemaLocation</code>, it is downloaded and
+          applied automatically, and you can always replace it by hand. To visualise a schema
+          itself, use the XSD Viewer below.
+        </p>
+
         <ul className="mt-3 text-sm space-y-1">
           <li>
             <a className={linkClass} href={GITHUB_REPO_URL} target="_blank" rel="noopener noreferrer">

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import time
@@ -12,9 +13,10 @@ from fastapi import APIRouter, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from app.api._common import _ms, read_upload, reject, reject_oversized_text
-from app.cache import xsd_cache
+from app.cache import xml_cache, xsd_cache
+from app.parser.schema_fetch import fetch_schema_set
 from app.parser.security import SecurityError, fetch_url
-from app.parser.xsd_store import StoredXsd, XsdError, load_xsd
+from app.parser.xsd_store import StoredXsd, XsdError, load_xsd, load_xsd_from_files
 from app.rate_limit import WRITE_LIMIT, limiter
 from app.usage.context import emit
 from app.usage.events import schema_display_name
@@ -163,4 +165,51 @@ async def upload_xsd_url(request: Request, payload: UrlPayload) -> XsdInfo:
         zip_bytes=None,
         main_filename=fetched.url,
         main_bytes=fetched.content,
+    )
+
+
+class AutoPayload(BaseModel):
+    xml_id: str = Field(..., description="Id of an already-loaded XML document")
+
+
+@router.post("/xsd/auto", response_model=XsdInfo)
+@limiter.limit(WRITE_LIMIT)
+async def auto_load_xsd(request: Request, payload: AutoPayload) -> XsdInfo:
+    """Load the schema the XML document points at, plus everything it imports.
+
+    Mirrors what a desktop XML editor does: read ``xsi:schemaLocation`` /
+    ``xsi:noNamespaceSchemaLocation`` off the root element and fetch it. Only
+    hints that resolved to an http(s) URL are usable — a relative location in an
+    uploaded file refers to the user's own disk and must be loaded manually.
+    """
+    stored = xml_cache.get(payload.xml_id)
+    if stored is None:
+        raise reject("xsd_load", "auto", 404, "XML not found or expired")
+
+    url = next((h.resolved_url for h in stored.model.schema_hints if h.resolved_url), None)
+    if url is None:
+        raise reject(
+            "xsd_load",
+            "auto",
+            404,
+            "this document does not reference a downloadable schema",
+            schema_name=schema_display_name("auto", stored.model.filename),
+        )
+
+    try:
+        files, main = await asyncio.to_thread(fetch_schema_set, url)
+    except SecurityError as exc:
+        raise reject(
+            "xsd_load", "auto", 400, str(exc), schema_name=schema_display_name("auto", url)
+        ) from exc
+    except XsdError as exc:
+        raise reject(
+            "xsd_load", "auto", 422, str(exc), schema_name=schema_display_name("auto", url)
+        ) from exc
+
+    return ingest_xsd(
+        source="auto",
+        schema_name=url,
+        input_bytes=sum(len(data) for data in files.values()),
+        loader=lambda: load_xsd_from_files(files, main),
     )
