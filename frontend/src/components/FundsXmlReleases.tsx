@@ -111,14 +111,14 @@ export function FundsXmlReleases({ onSelect, busy }: FundsXmlReleasesProps) {
       )}
 
       {state.kind === "ready" && state.releases.length > 0 && (
-        <div className="max-h-64 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded">
+        <div className="max-h-64 overflow-y-auto overflow-x-auto border border-slate-200 dark:border-slate-800 rounded">
           <table className="w-full text-xs border-collapse">
             <thead className="sticky top-0 bg-slate-50 dark:bg-slate-900">
               <tr className="text-left text-[10px] uppercase tracking-wide text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                 <th className="py-1 px-2 font-semibold">Version</th>
-                <th className="py-1 px-2 font-semibold">Date</th>
+                <th className="hidden sm:table-cell py-1 px-2 font-semibold">Date</th>
                 <th className="py-1 px-2 font-semibold">File</th>
-                <th className="py-1 px-2 font-semibold text-right">Size</th>
+                <th className="hidden sm:table-cell py-1 px-2 font-semibold text-right">Size</th>
               </tr>
             </thead>
             <tbody>
@@ -147,7 +147,7 @@ export function FundsXmlReleases({ onSelect, busy }: FundsXmlReleasesProps) {
                     >
                       {isFirst && (
                         <td
-                          className="py-1 px-2 font-mono align-top"
+                          className="py-1 touch:py-2.5 px-2 font-mono align-top whitespace-nowrap"
                           rowSpan={release.assets.length}
                         >
                           {release.tag_name}
@@ -160,16 +160,16 @@ export function FundsXmlReleases({ onSelect, busy }: FundsXmlReleasesProps) {
                       )}
                       {isFirst && (
                         <td
-                          className="py-1 px-2 align-top text-slate-600 dark:text-slate-400"
+                          className="hidden sm:table-cell py-1 px-2 align-top text-slate-600 dark:text-slate-400"
                           rowSpan={release.assets.length}
                         >
                           {formatDate(release.published_at)}
                         </td>
                       )}
-                      <td className="py-1 px-2 font-mono truncate max-w-[14ch]">
+                      <td className="py-1 touch:py-2.5 px-2 font-mono break-all">
                         {asset.filename}
                       </td>
-                      <td className="py-1 px-2 text-right text-slate-600 dark:text-slate-400">
+                      <td className="hidden sm:table-cell py-1 px-2 text-right text-slate-600 dark:text-slate-400">
                         {formatBytes(asset.size)}
                       </td>
                     </tr>

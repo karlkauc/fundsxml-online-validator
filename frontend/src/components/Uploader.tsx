@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import clsx from "clsx";
+import { COARSE_POINTER_QUERY, useMediaQuery } from "../lib/useMediaQuery";
 import { ApiError } from "../api/client";
 import { FundsXmlReleases } from "./FundsXmlReleases";
 import { XSD_VIEWER_URL } from "../lib/links";
@@ -85,6 +86,8 @@ function SourceLoader({
   const [url, setUrl] = useState("");
   const [mainFilename, setMainFilename] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  // Finger input has no drag-and-drop; say so instead of inviting a drop.
+  const coarsePointer = useMediaQuery(COARSE_POINTER_QUERY);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   // A document may also be loaded from outside this panel (the empty-state
@@ -127,9 +130,9 @@ function SourceLoader({
       className={clsx("panel rounded-lg p-3 flex-1 min-w-0", disabled && "opacity-60")}
       aria-disabled={disabled || undefined}
     >
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">{title}</h3>
-        <div className="flex gap-1" role="tablist">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <h3 className="text-sm font-semibold shrink-0">{title}</h3>
+        <div className="flex gap-1 overflow-x-auto" role="tablist">
           {(["file", "text", "url", ...(onRelease ? ["releases"] : [])] as Mode[]).map((m) => (
             <button
               key={m}
@@ -138,7 +141,7 @@ function SourceLoader({
               aria-selected={mode === m}
               disabled={disabled}
               className={clsx(
-                "px-2 py-0.5 text-xs font-medium rounded disabled:cursor-not-allowed",
+                "shrink-0 whitespace-nowrap px-2 py-0.5 touch:py-1.5 text-xs font-medium rounded disabled:cursor-not-allowed",
                 mode === m
                   ? "bg-accent text-white dark:bg-accent-dark dark:text-slate-950"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
@@ -181,7 +184,7 @@ function SourceLoader({
               }}
             />
             <p className="mb-2 text-slate-600 dark:text-slate-400">
-              Drop a file here or choose one
+              {coarsePointer ? "Choose a file to load." : "Drop a file here or choose one"}
             </p>
             <button
               type="button"

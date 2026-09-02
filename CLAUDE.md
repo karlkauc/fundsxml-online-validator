@@ -34,6 +34,19 @@ frontend, served as one container. Sibling of the **XSD Online Viewer**
   FundsXML case). The frontend funnels every XML entry point through `applyXml`
   in `App.tsx`; `appStore.xsdSource` (`"auto" | "manual"`) makes sure a schema
   the user picked is never overwritten.
+- **Responsive tiers.** Phone `< md` (768): one pane at a time, switched by
+  the bottom `MobileNav` (Tree / Diagram / Validation). `App.tsx` keeps
+  `viewMode` (store) plus a local `validationOpen` flag that is the phone's
+  Validation pane and the tablet's drawer. Tablet `md`–`lg`: tab strip +
+  view, Validation as a right slide-over opened by "Show validation".
+  Desktop `≥ lg`: the two-column grid. `lib/useMediaQuery.ts`
+  (`MD_QUERY`/`LG_QUERY`) must stay in sync with the Tailwind screens;
+  the custom `touch:` (coarse pointer) and `short:` (max-height 500px)
+  screens live in `tailwind.config.ts`. On phones the Files section
+  collapses after a successful XML (`applyXml`) or manual XSD (`applyXsd`)
+  load. Header actions beyond Search fold into `HeaderActions`' "More"
+  menu below `lg`; the diagram toolbar goes icon-only below `md`
+  (`DiagramView/DiagramToolbar.tsx`, first fit via `fitOptions.ts`).
 - **Usage statistics** (`docs/USAGE_STATS.md`): off unless `USAGE_DB_URL` is
   set. Routers call `emit("xml_load"|"xsd_load"|"validate"|"export", …)`,
   `spa_fallback` (`mount_spa()`) emits `page_view` only for routes in `SPA_ROUTES`
@@ -59,6 +72,13 @@ cd backend && pytest && ruff check .
 cd frontend && npm run build && npm run lint
 docker compose up --build                          # full image at http://127.0.0.1:8093
 ```
+
+E2E (Playwright, phone + tablet emulation in Chromium): build the frontend
+first, then `cd e2e && npm install && npx playwright install chromium &&
+npx playwright test`. The config boots the backend with
+`STATIC_DIR=../frontend/dist`; set `E2E_PORT=8097` if 8080 is taken, or
+`E2E_EXTERNAL=1 E2E_BASE_URL=http://127.0.0.1:8093` against the compose
+image. `e2e/` also holds the bare `playwright` used by `scripts/record_demo.mjs`.
 
 ## Deployment — Google Cloud Run
 

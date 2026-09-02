@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiError,
   autoLoadXsd,
@@ -12,7 +12,7 @@ import {
   listFundsXmlReleases,
   type FundsXmlRelease,
 } from "./api/client";
-import type { XmlDocModel } from "./types/model";
+import type { XmlDocModel, XsdInfo } from "./types/model";
 import { useApp } from "./stores/appStore";
 import { isHandoffLanding, receiveHandoff } from "./lib/handoff";
 import clsx from "clsx";
@@ -23,6 +23,10 @@ import { ValidationPanel } from "./components/ValidationPanel";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { FeedbackDialog } from "./components/FeedbackDialog";
 import { AboutDialog } from "./components/AboutDialog";
+import { HeaderActions, type HeaderAction } from "./components/HeaderActions";
+import { MobileNav, type MobilePane } from "./components/MobileNav";
+import { LG_QUERY, MD_QUERY, matchesMediaQuery, useMediaQuery } from "./lib/useMediaQuery";
+import { useDismiss } from "./lib/useDismiss";
 import {
   FUNDSXML_SAMPLE_URL,
   GITHUB_REPO_URL,
@@ -62,7 +66,38 @@ export default function App() {
   const clearXsd = useApp((s) => s.clearXsd);
   const viewMode = useApp((s) => s.viewMode);
   const setViewMode = useApp((s) => s.setViewMode);
+  const validation = useApp((s) => s.validation);
   const [filesOpen, setFilesOpen] = useState(true);
+  // Below `md` (phones): the Validation pane is showing instead of the
+  // tree/diagram. Between `md` and `lg` (tablets): the validation drawer is
+  // open. Ignored from `lg` up, where validation is a fixed column.
+  const [validationOpen, setValidationOpen] = useState(false);
+  const atLeastMd = useMediaQuery(MD_QUERY);
+  const wide = useMediaQuery(LG_QUERY);
+  const asideRef = useRef<HTMLElement | null>(null);
+  const closeValidation = useCallback(() => setValidationOpen(false), []);
+  // Escape / tap outside close the tablet drawer. Not on phones: there the
+  // pointer-down on the bottom nav would race the nav's own click.
+  useDismiss(asideRef, validationOpen && atLeastMd && !wide, closeValidation);
+  const mobilePane: MobilePane = validationOpen ? "validation" : viewMode;
+  const onMobilePane = useCallback(
+    (pane: MobilePane) => {
+      if (pane === "validation") {
+        setValidationOpen(true);
+        return;
+      }
+      setViewMode(pane);
+      setValidationOpen(false);
+    },
+    [setViewMode],
+  );
+  const openTreeSearch = useCallback(() => {
+    setViewMode("tree");
+    setValidationOpen(false);
+    // XmlTreeView owns the listener and may only mount in the next commit
+    // (coming from the diagram or the phone's Validation pane).
+    requestAnimationFrame(() => openSearch());
+  }, [setViewMode]);
   // Outcome of auto-detecting the schema from the document, when it did not
   // simply succeed. Never blocks: the document is shown either way.
   const [autoSchema, setAutoSchema] = useState<AutoSchemaNote | null>(null);
@@ -89,6 +124,11 @@ export default function App() {
     async (doc: XmlDocModel) => {
       setXml(doc);
       setAutoSchema(null);
+      // A fresh document opens on the view, not the validation panel. On
+      // phones the loaders would otherwise leave no room for it; read the
+      // width imperatively so a later rotation does not re-collapse Files.
+      setValidationOpen(false);
+      if (!matchesMediaQuery(MD_QUERY)) setFilesOpen(false);
       // setXml already dropped a previously auto-detected schema; a schema the
       // user picked by hand is kept and must not be overridden.
       if (useApp.getState().xsdInfo) return;
@@ -118,15 +158,25 @@ export default function App() {
     async () => applyXml(await uploadXmlUrl(FUNDSXML_SAMPLE_URL)),
     [applyXml],
   );
-  const onXsdFile = useCallback(
-    async (f: File, mainFilename?: string) => setXsd(await uploadXsdFile(f, mainFilename)),
+  // A schema the user loaded by hand. On phones the open loaders would push
+  // the document and the validation result off screen, so Files collapses
+  // once the load succeeded (the summary row keeps both filenames visible).
+  const applyXsd = useCallback(
+    (info: XsdInfo) => {
+      setXsd(info);
+      if (!matchesMediaQuery(MD_QUERY)) setFilesOpen(false);
+    },
     [setXsd],
   );
-  const onXsdText = useCallback(async (c: string) => setXsd(await uploadXsdText(c)), [setXsd]);
-  const onXsdUrl = useCallback(async (u: string) => setXsd(await uploadXsdUrl(u)), [setXsd]);
+  const onXsdFile = useCallback(
+    async (f: File, mainFilename?: string) => applyXsd(await uploadXsdFile(f, mainFilename)),
+    [applyXsd],
+  );
+  const onXsdText = useCallback(async (c: string) => applyXsd(await uploadXsdText(c)), [applyXsd]);
+  const onXsdUrl = useCallback(async (u: string) => applyXsd(await uploadXsdUrl(u)), [applyXsd]);
   const onXsdRelease = useCallback(
-    async (tag: string, filename: string) => setXsd(await loadXsdFromRelease(tag, filename)),
-    [setXsd],
+    async (tag: string, filename: string) => applyXsd(await loadXsdFromRelease(tag, filename)),
+    [applyXsd],
   );
   const onXsdClear = useCallback(() => {
     clearXsd();
@@ -174,60 +224,47 @@ export default function App() {
     };
   }, [applyXml]);
 
+  // Everything but Search and the theme toggle folds into a "More" menu
+  // below `lg`, so the header stays a single row on phones.
+  const secondaryActions = useMemo<HeaderAction[]>(
+    () => [
+      { key: "feedback", label: "💬 Feedback", title: "Send feedback", ariaLabel: "Send feedback", onClick: openFeedback },
+      {
+        key: "xsd-viewer",
+        label: "XSD Viewer ↗",
+        title: "Have an XML Schema instead? Open our sister tool XSD Viewer",
+        ariaLabel: "Open XSD Viewer (sister tool for XML Schemas)",
+        href: XSD_VIEWER_URL,
+        external: true,
+      },
+      { key: "github", label: "GitHub", title: "Source code on GitHub", ariaLabel: "Source code on GitHub", href: GITHUB_REPO_URL, external: true },
+      { key: "about", label: "ℹ️ About", title: "About this app", ariaLabel: "About this app", onClick: openAbout },
+    ],
+    [],
+  );
+
   return (
     <div className="flex flex-col h-full">
-      <header className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">XML Online Viewer</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+      <header className="flex items-center justify-between gap-2 md:gap-3 px-3 md:px-4 py-2 md:py-3 short:py-1 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-base md:text-lg font-semibold shrink-0">XML Online Viewer</h1>
+          <p className="hidden lg:block text-sm text-slate-500 dark:text-slate-400 truncate">
             View any XML file as a tree or diagram · validate it against an XSD
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
           <button
             type="button"
             className="btn"
-            onClick={() => {
-              setViewMode("tree");
-              openSearch();
-            }}
+            onClick={openTreeSearch}
             disabled={!xmlDoc}
             title="Search (Ctrl/Cmd-K)"
+            aria-label="Search"
           >
-            🔍 Search
+            <span aria-hidden="true">🔍</span>
+            <span className="hidden sm:inline">Search</span>
           </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={() => openFeedback()}
-            title="Send feedback"
-            aria-label="Send feedback"
-          >
-            💬 Feedback
-          </button>
-          <a
-            className="btn"
-            href={XSD_VIEWER_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Have an XML Schema instead? Open our sister tool XSD Viewer"
-            aria-label="Open XSD Viewer (sister tool for XML Schemas)"
-          >
-            XSD Viewer ↗
-          </a>
-          <a
-            className="btn"
-            href={GITHUB_REPO_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Source code on GitHub"
-            aria-label="Source code on GitHub"
-          >
-            GitHub
-          </a>
-          <button type="button" className="btn" onClick={() => openAbout()} title="About this app" aria-label="About this app">
-            ℹ️ About
-          </button>
+          <HeaderActions actions={secondaryActions} inline={wide} />
           <ThemeToggle />
         </div>
       </header>
@@ -237,7 +274,7 @@ export default function App() {
           type="button"
           onClick={() => setFilesOpen((o) => !o)}
           aria-expanded={filesOpen}
-          className="w-full flex items-center gap-2 px-4 py-1.5 text-left hover:bg-slate-50 dark:hover:bg-slate-900"
+          className="w-full min-w-0 flex items-center gap-2 px-3 md:px-4 py-1.5 touch:py-2.5 text-left hover:bg-slate-50 dark:hover:bg-slate-900"
         >
           <span className="text-slate-500 text-xs w-3">{filesOpen ? "▾" : "▸"}</span>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -266,7 +303,7 @@ export default function App() {
           </p>
         )}
         {filesOpen && (
-          <div className="px-4 pb-4">
+          <div className="px-3 md:px-4 pb-3 md:pb-4">
             <Uploader
               xmlStatus={xmlDoc ? `${xmlDoc.filename} (${xmlDoc.node_count} nodes)` : null}
               xsdStatus={xsdInfo ? xsdInfo.main_filename : null}
@@ -304,7 +341,8 @@ export default function App() {
 
       <main className="flex-1 min-h-0">
         {!xmlDoc ? (
-          <div className="h-full flex items-center justify-center p-6">
+          <div className="h-full overflow-y-auto">
+            <div className="min-h-full flex items-center justify-center p-4 md:p-6">
             <div className="max-w-lg text-center">
               <h2 className="text-xl font-semibold mb-2">Start with an XML file</h2>
               <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
@@ -347,39 +385,90 @@ export default function App() {
                 </a>
               </p>
             </div>
+            </div>
           </div>
         ) : (
-          <div className="h-full grid grid-cols-1 lg:grid-cols-[1fr_28rem] divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800">
-            <div className="min-h-0 h-full flex flex-col">
-              <div className="flex gap-1 px-3 py-2 border-b border-slate-200 dark:border-slate-800" role="tablist">
-                {(["tree", "diagram"] as const).map((m) => (
-                  <button
-                    key={m}
-                    type="button"
-                    role="tab"
-                    aria-selected={viewMode === m}
-                    className={clsx(
-                      "px-3 py-1 text-sm font-medium rounded-md",
-                      viewMode === m
-                        ? "bg-accent text-white dark:bg-accent-dark dark:text-slate-950"
-                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700",
-                    )}
-                    onClick={() => setViewMode(m)}
-                  >
-                    {m === "tree" ? "Tree" : "Diagram"}
-                  </button>
-                ))}
+          // Phone: one pane at a time (bottom nav). Tablet (md): tab strip +
+          // view, validation in a drawer. Desktop (lg): two columns.
+          <div className="h-full min-h-0 flex flex-col md:grid md:grid-cols-1 lg:grid-cols-[1fr_28rem]">
+            <div
+              className={clsx(
+                "min-h-0 h-full flex-col md:flex",
+                validationOpen ? "hidden" : "flex flex-1",
+              )}
+            >
+              <div className="hidden md:flex items-center gap-1 px-3 py-2 short:py-1 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex gap-1" role="tablist">
+                  {(["tree", "diagram"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="tab"
+                      aria-selected={viewMode === m}
+                      className={clsx(
+                        "px-3 py-1 touch:py-2 text-sm font-medium rounded-md",
+                        viewMode === m
+                          ? "bg-accent text-white dark:bg-accent-dark dark:text-slate-950"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700",
+                      )}
+                      onClick={() => setViewMode(m)}
+                    >
+                      {m === "tree" ? "Tree" : "Diagram"}
+                    </button>
+                  ))}
+                </div>
+                {/* Tablet only: validation lives in a drawer. */}
+                <button
+                  type="button"
+                  className="btn ml-auto hidden md:inline-flex lg:hidden"
+                  onClick={() => setValidationOpen((v) => !v)}
+                  aria-label="Show validation"
+                  aria-pressed={validationOpen}
+                  title={validationOpen ? "Hide the validation panel" : "Show the validation panel"}
+                >
+                  ✅ Validation
+                  {validation && !validation.is_valid && (
+                    <span className="chip bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                      {validation.errors.length}
+                    </span>
+                  )}
+                </button>
               </div>
               <div className="flex-1 min-h-0">
                 {viewMode === "tree" ? <XmlTreeView /> : <DiagramView />}
               </div>
             </div>
-            <div className="min-h-0 h-full">
-              <ValidationPanel />
-            </div>
+            {validationOpen && (
+              <div
+                className="hidden md:block lg:hidden fixed inset-0 z-20 bg-black/30"
+                aria-hidden="true"
+                onClick={closeValidation}
+              />
+            )}
+            <aside
+              ref={asideRef}
+              aria-label="Validation"
+              className={clsx(
+                "min-h-0 flex-col bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 md:border-l",
+                validationOpen
+                  ? "flex flex-1 md:flex-none md:fixed md:inset-y-0 md:right-0 md:z-30 md:w-[400px] md:max-w-[90vw] md:shadow-2xl"
+                  : "hidden",
+                "lg:flex lg:static lg:inset-auto lg:z-auto lg:w-auto lg:max-w-none lg:shadow-none lg:h-full",
+              )}
+            >
+              <ValidationPanel
+                onPick={() => {
+                  // Phones: show the picked node. Tablets keep the drawer open.
+                  if (!atLeastMd) setValidationOpen(false);
+                }}
+                onClose={closeValidation}
+              />
+            </aside>
           </div>
         )}
       </main>
+
+      {xmlDoc && <MobileNav pane={mobilePane} onChange={onMobilePane} />}
 
       <FeedbackDialog />
       <AboutDialog />

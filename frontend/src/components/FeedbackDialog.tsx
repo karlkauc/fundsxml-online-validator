@@ -60,7 +60,7 @@ export function FeedbackDialog() {
 
   return (
     <div
-      className="fixed inset-0 bg-black/30 flex items-start justify-center pt-[10vh] px-4 z-50"
+      className="fixed inset-0 bg-black/30 flex items-start justify-center pt-4 md:pt-[10vh] px-4 z-50"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) close();
       }}
@@ -72,7 +72,7 @@ export function FeedbackDialog() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="feedback-title"
-        className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-slate-200 dark:border-slate-800 p-5"
+        className="w-full max-w-lg max-h-[85dvh] overflow-y-auto bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-slate-200 dark:border-slate-800 p-5"
       >
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>

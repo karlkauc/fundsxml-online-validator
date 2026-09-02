@@ -10,7 +10,14 @@ const SEVERITY_CLASS: Record<Severity, string> = {
   warning: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
 };
 
-export function ValidationPanel() {
+interface ValidationPanelProps {
+  /** Called after an error row selected its node (phones jump back to the view). */
+  onPick?: () => void;
+  /** Renders a close button in the caption row (the tablet drawer). */
+  onClose?: () => void;
+}
+
+export function ValidationPanel({ onPick, onClose }: ValidationPanelProps = {}) {
   const xmlDoc = useApp((s) => s.xmlDoc);
   const xsdInfo = useApp((s) => s.xsdInfo);
   const validation = useApp((s) => s.validation);
@@ -47,10 +54,21 @@ export function ValidationPanel() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Validation
         </span>
+        {onClose && (
+          <button
+            type="button"
+            className="btn px-2.5 hidden md:inline-flex lg:hidden"
+            onClick={onClose}
+            aria-label="Close validation"
+            title="Close validation"
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       <div className="p-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 flex-wrap">
@@ -112,12 +130,16 @@ export function ValidationPanel() {
                 <li
                   key={i}
                   className={clsx(
-                    "px-3 py-2 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900",
+                    "px-3 py-2 touch:py-3 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-900",
                     err.node_id &&
                       selectedNodeId === err.node_id &&
                       "bg-blue-50 dark:bg-blue-900/30",
                   )}
-                  onClick={() => err.node_id && setSelected(err.node_id)}
+                  onClick={() => {
+                    if (!err.node_id) return;
+                    setSelected(err.node_id);
+                    onPick?.();
+                  }}
                 >
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className={clsx("chip", SEVERITY_CLASS[err.severity])}>

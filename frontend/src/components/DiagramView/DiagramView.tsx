@@ -22,6 +22,9 @@ import { buildDiagramGraph, NODE_WIDTH } from "./buildGraph";
 import { XmlElementNode } from "./XmlElementNode";
 import { exportFlowAsPng, exportFlowAsSvg } from "./exportImage";
 import { computeAnchoredViewport } from "./anchorViewport";
+import { DiagramToolbar, type ExportFormat } from "./DiagramToolbar";
+import { initialFitOptions } from "./fitOptions";
+import { MD_QUERY, useMediaQuery } from "../../lib/useMediaQuery";
 
 const NODE_TYPES = {
   xmlElement: XmlElementNode as unknown as React.ComponentType<NodeProps>,
@@ -91,6 +94,12 @@ function DiagramInner() {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const isDark = useIsDarkTheme();
   const minimapColors = isDark ? MINIMAP_DARK : MINIMAP_LIGHT;
+  // Phones get icon-only toolbar buttons and a fit centred on one node.
+  const compact = !useMediaQuery(MD_QUERY);
+  // Latest fit options without re-running the fit effects on every render.
+  const rootId = xmlDoc?.root.id ?? null;
+  const fitOptionsRef = useRef(initialFitOptions(nodes, selectedNodeId, rootId, compact));
+  fitOptionsRef.current = initialFitOptions(nodes, selectedNodeId, rootId, compact);
 
   // Keeps a clicked node visually fixed across the toggle-driven re-layout.
   const pendingAnchorRef = useRef<
@@ -103,15 +112,54 @@ function DiagramInner() {
   const centeredForRef = useRef<string | null>(null);
 
   // Only re-fit when the loaded document changes — re-fitting on every
-  // expand/collapse would jitter the viewport and lose pan/zoom.
+  // expand/collapse would jitter the viewport and lose pan/zoom. The fit has
+  // to wait until React Flow has taken over the new nodes and measured them:
+  // fitting unmeasured nodes (especially the single-node fit on phones)
+  // lands on a bogus viewport. Nodes are uncontrolled here (no
+  // onNodesChange), so `useNodesInitialized` never flips; poll a few frames.
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
   useEffect(() => {
-    if (nodes.length > 0) {
-      requestAnimationFrame(() =>
-        flow.fitView({ padding: 0.2, duration: 250, maxZoom: 1.2 }),
-      );
-    }
+    if (nodes.length === 0) return;
+    let attempts = 0;
+    let raf = 0;
+    const tryFit = () => {
+      const ready = nodesRef.current.every((n) => {
+        const internal = flow.getInternalNode(n.id);
+        return (
+          internal?.internals.userNode === n &&
+          !!internal.measured.width &&
+          !!internal.measured.height
+        );
+      });
+      if (ready) {
+        void flow.fitView(fitOptionsRef.current);
+        return;
+      }
+      if (++attempts < 120) raf = requestAnimationFrame(tryFit);
+    };
+    raf = requestAnimationFrame(tryFit);
+    return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [xmlDoc?.xml_id]);
+
+  // On phones the diagram can sit inside a hidden (display:none) pane while
+  // a document loads, so React Flow's fitView measures a 0x0 box. Re-fit the
+  // first time the container gains real size. Inert on desktop.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    let hadSize = el.clientWidth > 0 && el.clientHeight > 0;
+    const observer = new ResizeObserver(() => {
+      const hasSize = el.clientWidth > 0 && el.clientHeight > 0;
+      if (!hadSize && hasSize && nodes.length > 0) {
+        requestAnimationFrame(() => flow.fitView(fitOptionsRef.current));
+      }
+      hadSize = hasSize;
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [flow, nodes.length]);
 
   useLayoutEffect(() => {
     const anchor = pendingAnchorRef.current;
@@ -174,7 +222,7 @@ function DiagramInner() {
   );
 
   const onExport = useCallback(
-    async (format: "png" | "svg") => {
+    async (format: ExportFormat) => {
       const viewportEl =
         wrapperRef.current?.querySelector<HTMLElement>(".react-flow__viewport");
       if (!viewportEl) return;
@@ -195,33 +243,16 @@ function DiagramInner() {
 
   return (
     <div ref={wrapperRef} className="relative h-full w-full">
-      <div className="absolute top-2 right-2 z-10 flex gap-1">
-        <button type="button" className="btn" onClick={expandAll} disabled={!xmlDoc}>
-          Expand all
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={collapseAll}
-          disabled={expandedIds.size === 0}
-        >
-          Collapse all
-        </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => setMinimapVisible(!minimapVisible)}
-          aria-pressed={minimapVisible}
-        >
-          {minimapVisible ? "🗺️ Minimap off" : "🗺️ Minimap"}
-        </button>
-        <button type="button" className="btn" onClick={() => onExport("svg")}>
-          SVG
-        </button>
-        <button type="button" className="btn" onClick={() => onExport("png")}>
-          PNG
-        </button>
-      </div>
+      <DiagramToolbar
+        compact={compact}
+        minimapVisible={minimapVisible}
+        canExpand={!!xmlDoc}
+        canCollapse={expandedIds.size > 0}
+        onExpandAll={expandAll}
+        onCollapseAll={collapseAll}
+        onToggleMinimap={() => setMinimapVisible(!minimapVisible)}
+        onExport={(format) => void onExport(format)}
+      />
       <ReactFlow
         nodes={nodes}
         edges={edges}

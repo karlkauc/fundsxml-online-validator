@@ -3,7 +3,19 @@ import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import clsx from "clsx";
 import { useApp } from "../../stores/appStore";
 import { buildTreeRows, type TreeRow } from "./treeRows";
+import { treeIndentPx } from "./treeIndent";
 import { EVENT_OPEN_SEARCH } from "../../lib/links";
+import {
+  COARSE_POINTER_QUERY,
+  SM_QUERY,
+  matchesMediaQuery,
+  useMediaQuery,
+} from "../../lib/useMediaQuery";
+
+// The keyboard hint is noise on a phone keyboard.
+const SEARCH_PLACEHOLDER = matchesMediaQuery(COARSE_POINTER_QUERY)
+  ? "Search tag, attribute or value…"
+  : "Search tag, attribute or value… (Ctrl/Cmd-K)";
 
 export function XmlTreeView() {
   const xmlDoc = useApp((s) => s.xmlDoc);
@@ -20,6 +32,8 @@ export function XmlTreeView() {
 
   const virtuoso = useRef<VirtuosoHandle | null>(null);
   const searchInput = useRef<HTMLInputElement | null>(null);
+  // Narrow phones indent less so deep nesting leaves room for the tag.
+  const compact = !useMediaQuery(SM_QUERY);
 
   // Header "Search" button / Ctrl-K: focus the search box.
   useEffect(() => {
@@ -48,18 +62,18 @@ export function XmlTreeView() {
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900">
+        <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           {xmlDoc.filename}
         </span>
-        <span className="font-mono text-[10px] text-slate-400">
+        <span className="hidden sm:inline font-mono text-[10px] text-slate-400">
           {xmlDoc.node_count} nodes · {rows.length} visible
         </span>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" className="btn !px-2 !py-1" onClick={expandAll}>
+          <button type="button" className="btn !px-2 !py-1 touch:!py-2" onClick={expandAll}>
             Expand all
           </button>
-          <button type="button" className="btn !px-2 !py-1" onClick={collapseAll}>
+          <button type="button" className="btn !px-2 !py-1 touch:!py-2" onClick={collapseAll}>
             Collapse all
           </button>
         </div>
@@ -68,7 +82,7 @@ export function XmlTreeView() {
         <input
           ref={searchInput}
           type="search"
-          placeholder="Search tag, attribute or value… (Ctrl/Cmd-K)"
+          placeholder={SEARCH_PLACEHOLDER}
           className="w-full text-sm px-2 py-1 rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
           value={searchQuery}
           onChange={(e) => setSearch(e.target.value)}
@@ -77,6 +91,8 @@ export function XmlTreeView() {
       <div className="flex-1 min-h-0">
         <Virtuoso
           ref={virtuoso}
+          // Rows never wrap; the list scrolls sideways, the page must not.
+          className="overflow-x-auto"
           style={{ height: "100%" }}
           totalCount={rows.length}
           itemContent={(idx) => {
@@ -88,6 +104,7 @@ export function XmlTreeView() {
                 selected={selectedNodeId === row.node.id}
                 errorCount={errorsByNodeId.get(row.node.id)?.length ?? 0}
                 belowCount={descendantErrorCounts.get(row.node.id) ?? 0}
+                compact={compact}
                 onToggle={() => toggleExpanded(row.node.id)}
                 onSelect={() => setSelected(row.node.id)}
               />
@@ -105,6 +122,7 @@ interface RowProps {
   selected: boolean;
   errorCount: number;
   belowCount: number;
+  compact: boolean;
   onToggle: () => void;
   onSelect: () => void;
 }
@@ -115,6 +133,7 @@ function TreeRowView({
   selected,
   errorCount,
   belowCount,
+  compact,
   onToggle,
   onSelect,
 }: RowProps) {
@@ -126,7 +145,7 @@ function TreeRowView({
   return (
     <div
       className={clsx(
-        "flex items-center gap-1 cursor-pointer select-none text-sm border-l-2 py-0.5",
+        "flex items-center gap-1 cursor-pointer select-none text-sm border-l-2 py-0.5 touch:py-1.5",
         selected
           ? "bg-blue-50 dark:bg-blue-900/30 border-accent"
           : hasError
@@ -135,7 +154,7 @@ function TreeRowView({
               ? "bg-amber-50 dark:bg-amber-900/15 border-amber-400"
               : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-900",
       )}
-      style={{ paddingLeft: `${depth * 14 + 6}px`, paddingRight: 8 }}
+      style={{ paddingLeft: treeIndentPx(depth, compact), paddingRight: 8 }}
       role="treeitem"
       aria-selected={selected}
       aria-expanded={hasChildren ? expanded : undefined}
@@ -145,7 +164,7 @@ function TreeRowView({
         <button
           type="button"
           aria-label={expanded ? "Collapse" : "Expand"}
-          className="px-1 text-slate-500"
+          className="px-1 touch:px-2 touch:py-1 text-slate-500"
           onClick={(e) => {
             e.stopPropagation();
             onToggle();
@@ -187,7 +206,7 @@ function TreeRowView({
       {hasError && (
         <span
           className="ml-1 chip bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
-          title={`${errorCount} validation error(s)`}
+          aria-label={`${errorCount} validation error(s)`}
         >
           ✕ {errorCount}
         </span>
@@ -195,7 +214,7 @@ function TreeRowView({
       {hasErrorBelow && (
         <span
           className="ml-1 chip bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
-          title={`${belowCount} error(s) in descendant nodes`}
+          aria-label={`${belowCount} error(s) in descendant nodes`}
         >
           ⤵ {belowCount}
         </span>

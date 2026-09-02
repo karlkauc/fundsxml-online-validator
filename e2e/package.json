@@ -1,8 +1,16 @@
 {
   "name": "xml-online-viewer-e2e",
   "private": true,
-  "description": "Playwright install used only by scripts/record_demo.mjs to record the README demo GIFs.",
+  "type": "module",
+  "description": "Playwright end-to-end tests (phone/tablet layout). The bare `playwright` package is also used by scripts/record_demo.mjs to record the README demo GIFs.",
+  "scripts": {
+    "test": "playwright test",
+    "test:mobile": "playwright test --project=phone --project=tablet",
+    "test:ui": "playwright test --ui"
+  },
   "devDependencies": {
+    "@playwright/test": "^1.59.0",
+    "@types/node": "^22.10.0",
     "playwright": "^1.59.0"
   }
 }

@@ -27,3 +27,4 @@ backend/geoip/*.mmdb
 # Demo-recording intermediates (the final docs/media/*.gif is committed)
 docs/media/_raw/
 e2e/test-results/
+e2e/playwright-report/
