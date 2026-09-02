@@ -260,6 +260,9 @@ function DiagramInner() {
         onNodeClick={onNodeClick}
         fitView
         minZoom={0.1}
+        // Themes the stock controls/background; the minimap colours above
+        // are our own because the defaults are too faint.
+        colorMode={isDark ? "dark" : "light"}
         proOptions={{ hideAttribution: true }}
       >
         <Background gap={16} />
