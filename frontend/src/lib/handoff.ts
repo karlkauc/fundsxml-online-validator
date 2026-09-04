@@ -11,7 +11,12 @@
 
 export const HANDOFF_SOURCE = "xsd-viewer";
 
-const SENDER_ORIGINS = ["https://www.xsd-viewer.online", "https://xsd-viewer.online"];
+// Keep in step with HANDOFF_SENDER_ORIGINS in the XSD viewer (lib/xmlViewerHandoff.ts).
+const SENDER_ORIGINS = [
+  "https://www.xsd-viewer.online",
+  "https://xsd-viewer.online",
+  "https://viewer.status20.net",
+];
 
 export interface HandoffFileMessage {
   type: "xml-viewer:file";
