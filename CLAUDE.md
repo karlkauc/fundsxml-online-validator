@@ -3,6 +3,9 @@
 XML data viewer + XSD validator. FastAPI + lxml backend, React/TS/Vite/Tailwind
 frontend, served as one container. Sibling of the **XSD Online Viewer**
 (<https://www.xsd-viewer.online>); shares its architecture and hardening.
+Both sites promote the author's desktop app FreeXmlToolkit
+(`~/webdav/FreeXmlToolkit`) via `frontend/src/components/DesktopAppCard.tsx`
+and the counted redirect `/go/freexmltoolkit` (`backend/app/api/go.py`).
 
 ## Layout
 

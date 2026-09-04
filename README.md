@@ -95,6 +95,16 @@ This is a sibling project to the
 architecture (FastAPI + lxml backend, React / TypeScript / Vite / Tailwind
 frontend) and its security-critical code (XXE, SSRF and XML-bomb protection).
 
+
+## Need more than a viewer? FreeXmlToolkit
+
+[FreeXmlToolkit](https://karlkauc.github.io/FreeXmlToolkit/) is the free
+desktop XML workstation by the same author (Apache 2.0; Windows, macOS,
+Linux): a schema-aware XML editor with IntelliSense and grid view,
+validation with XSD and Schematron, XSLT and XProc, XML signatures and PDF
+output — all offline. The viewer links to it from the start page, the
+validation panel and the About dialog.
+
 ## Author
 
 Built and maintained by **Karl Kauc** — [github.com/karlkauc](https://github.com/karlkauc).

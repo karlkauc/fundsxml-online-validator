@@ -15,6 +15,7 @@ import {
 import type { XmlDocModel, XsdInfo } from "./types/model";
 import { useApp } from "./stores/appStore";
 import { isHandoffLanding, receiveHandoff } from "./lib/handoff";
+import { DesktopAppCard } from "./components/DesktopAppCard";
 import clsx from "clsx";
 import { Uploader } from "./components/Uploader";
 import { XmlTreeView } from "./components/XmlTreeView/XmlTreeView";
@@ -33,8 +34,7 @@ import {
   XSD_VIEWER_URL,
   openAbout,
   openFeedback,
-  openSearch,
-} from "./lib/links";
+  openSearch, FREEXMLTOOLKIT_GO } from "./lib/links";
 
 // Stable landing route fundsxml.org can link to: opens the XSD loader on the
 // FundsXML Releases tab and auto-loads the newest release's schema.
@@ -243,6 +243,14 @@ export default function App() {
         href: XSD_VIEWER_URL,
         external: true,
       },
+      {
+        key: "freexmltoolkit",
+        label: "Desktop app ↗",
+        title: "FreeXmlToolkit — free desktop XML workstation by the same author (Windows, macOS, Linux)",
+        ariaLabel: "FreeXmlToolkit desktop app",
+        href: FREEXMLTOOLKIT_GO,
+        external: true,
+      },
       { key: "github", label: "GitHub", title: "Source code on GitHub", ariaLabel: "Source code on GitHub", href: GITHUB_REPO_URL, external: true },
       { key: "about", label: "ℹ️ About", title: "About this app", ariaLabel: "About this app", onClick: openAbout },
     ],
@@ -390,6 +398,14 @@ export default function App() {
                   Visualise it in the XSD Viewer ↗
                 </a>
               </p>
+              <DesktopAppCard
+                className="mt-8"
+                bullets={[
+                  "Edit and format XML with schema-aware IntelliSense and a grid view",
+                  "Validate with XSD and Schematron, transform with XSLT and XProc",
+                  "Sign documents, generate PDFs, query with XPath/XQuery — all offline",
+                ]}
+              />
             </div>
             </div>
           </div>

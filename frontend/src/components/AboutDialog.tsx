@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchHealth } from "../api/client";
-import { EVENT_OPEN_ABOUT, FUNDSXML_URL, GITHUB_REPO_URL, XSD_VIEWER_URL, openFeedback } from "../lib/links";
+import { EVENT_OPEN_ABOUT, FUNDSXML_URL, GITHUB_REPO_URL, XSD_VIEWER_URL, openFeedback, FREEXMLTOOLKIT_GO } from "../lib/links";
 
 /**
  * Modal "About" dialog. Opened from anywhere via `openAbout()` (lib/links) —
@@ -112,6 +112,12 @@ export function AboutDialog() {
               fundsxml.org
             </a>
             {" — the FundsXML standard, whose schemas can be loaded directly"}
+          </li>
+          <li>
+            <a className={linkClass} href={FREEXMLTOOLKIT_GO} target="_blank" rel="noopener noreferrer">
+              FreeXmlToolkit
+            </a>
+            {" — free desktop XML workstation by the same author: schema-aware editor, XSLT, Schematron, signatures"}
           </li>
           <li>
             <a className={linkClass} href={`${GITHUB_REPO_URL}/blob/main/LICENSE`} target="_blank" rel="noopener noreferrer">

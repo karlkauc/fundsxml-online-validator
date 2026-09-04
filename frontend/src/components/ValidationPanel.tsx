@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import clsx from "clsx";
 import { ApiError, excelReportUrl, runValidation } from "../api/client";
+import { DesktopAppCard } from "./DesktopAppCard";
 import { useApp } from "../stores/appStore";
 import type { Severity } from "../types/model";
 
@@ -162,6 +163,14 @@ export function ValidationPanel({ onPick, onClose }: ValidationPanelProps = {}) 
               ))}
             </ul>
           )}
+        </div>
+      )}
+      {validation && (
+        <div className="px-3 pb-3">
+          <DesktopAppCard variant="inline">
+            Fix errors in a schema-aware editor, add Schematron business rules, or validate whole
+            folders with the free desktop app:
+          </DesktopAppCard>
         </div>
       )}
     </div>

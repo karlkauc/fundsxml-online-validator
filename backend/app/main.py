@@ -18,6 +18,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app import __version__
 from app.api.feedback import router as feedback_router
+from app.api.go import router as go_router
 from app.api.releases import router as releases_router
 from app.api.validate import router as validate_router
 from app.api.xml import router as xml_router
@@ -219,6 +220,7 @@ app.include_router(xsd_router, prefix="/api")
 app.include_router(validate_router, prefix="/api")
 app.include_router(releases_router, prefix="/api")
 app.include_router(feedback_router, prefix="/api")
+app.include_router(go_router)  # /go/… redirects, registered before the SPA catch-all
 
 # --- Static frontend ------------------------------------------------------
 # Serves the built React SPA. In dev, the Vite dev-server runs separately and
