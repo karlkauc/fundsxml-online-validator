@@ -203,15 +203,21 @@ export default function App() {
   }, [xsdInfo, setXsd]);
 
   // Landing from the XSD viewer: announce readiness, then load the posted
-  // file as if the user had uploaded it here. Falls back to manual upload if
-  // the opener never answers (popup blocker, old deploy).
+  // file as if the user had uploaded it here — and the schema, when the
+  // sender attached one, so validation starts on its own. Falls back to
+  // manual upload if the opener never answers (popup blocker, old deploy).
   useEffect(() => {
     if (!isHandoff) return;
-    const cleanup = receiveHandoff((file) => {
+    const cleanup = receiveHandoff((file, schema) => {
       setHandoff({ status: "loading", detail: file.name });
       void uploadXmlFile(file)
         .then(async (doc) => {
           await applyXml(doc);
+          if (schema) {
+            setHandoff({ status: "loading", detail: schema.file.name });
+            applyXsd(await uploadXsdFile(schema.file, schema.mainFilename));
+            setValidationOpen(true);
+          }
           setHandoff(null);
           window.history.replaceState(null, "", window.location.pathname);
         })
@@ -222,7 +228,7 @@ export default function App() {
       cleanup();
       window.clearTimeout(timer);
     };
-  }, [applyXml]);
+  }, [applyXml, applyXsd]);
 
   // Everything but Search and the theme toggle folds into a "More" menu
   // below `lg`, so the header stays a single row on phones.
